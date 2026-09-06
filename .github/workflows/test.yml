@@ -1,0 +1,21 @@
+name: Test CV Studio
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r backend/requirements.txt
+      - name: Session and upload API integration tests
+        working-directory: backend
+        run: |
+          python test_oturum.py
+          python test_pipeline.py
+          python test_upload.py
