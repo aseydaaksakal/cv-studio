@@ -7,6 +7,10 @@
 - Kopyaladiktan sonra Downloads'takileri siler
 - Ilk calistirmada kendini backend'e kopyalar ve guncelle.cmd uretir
 
+Taninan dosyalar: projede zaten var olanlar, asagidaki sabit liste,
+test_*.py gibi desenler. Taninmayan .py dosyalari listelenir; hepsini
+almak icin --hepsi.
+
 Ilk calistirma (Downloads'tan):
     .\\.venv\\Scripts\\python.exe "$env:USERPROFILE\\Downloads\\al.py"
 
@@ -16,6 +20,7 @@ Sonraki her seferde (backend klasorunde):
 
 import argparse
 import os
+import re
 import shutil
 import sys
 import time
@@ -27,11 +32,19 @@ import zipfile
 BACKEND = {
     "stt.py", "voice.py", "app.py", "llm.py", "classify.py", "commands.py",
     "design.py", "cssguard.py", "render_cv.py", "analyze_cv.py", "parse_cv.py",
-    "compare_cv.py", "diff_cv.py", "test_stt.py", "test_stt_zor.py",
-    "test_voice.py", "test_llm.py", "test_commands.py", "test_design.py",
-    "test_classify.py", "al.py", "gonder.py", "requirements.txt",
+    "compare_cv.py", "diff_cv.py", "upload.py", "session.py",
+    "test_stt.py", "test_stt_zor.py", "test_voice.py", "test_llm.py",
+    "test_commands.py", "test_design.py", "test_classify.py",
+    "test_command.py", "test_upload.py", "test_compare.py",
+    "al.py", "gonder.py", "requirements.txt",
 }
 FRONTEND = {"index.html", "style.css", "app.js"}
+
+# yeni dosyalar: adi bu desene uyuyorsa backend'e gider
+DESEN = re.compile(r"^(test_[a-z0-9_]+|[a-z0-9_]+_cv|cv_[a-z0-9_]+)\.py$")
+
+UZANTI_BACKEND = (".py", ".txt")
+UZANTI_FRONTEND = (".html", ".css", ".js")
 
 GUNCELLE_CMD = (
     "@echo off\r\n"
@@ -53,10 +66,28 @@ def temel_ad(ad):
     return kok + uzanti
 
 
-def hedef_klasor(ad, backend, frontend):
+def listeleri_genislet(backend, frontend):
+    """Projede zaten duran dosyalari taninan listeye ekler."""
+    if os.path.isdir(backend):
+        for ad in os.listdir(backend):
+            if ad.endswith(UZANTI_BACKEND) and not ad.endswith(".onceki"):
+                BACKEND.add(ad)
+    if os.path.isdir(frontend):
+        for ad in os.listdir(frontend):
+            if ad.endswith(UZANTI_FRONTEND):
+                FRONTEND.add(ad)
+
+
+def hedef_klasor(ad, backend, frontend, hepsi=False):
     if ad in BACKEND:
         return backend
     if ad in FRONTEND:
+        return frontend
+    if DESEN.match(ad):
+        return backend
+    if hepsi and ad.endswith(UZANTI_BACKEND):
+        return backend
+    if hepsi and ad.endswith(UZANTI_FRONTEND):
         return frontend
     return None
 
@@ -79,14 +110,14 @@ def proje_bul(betik):
 
 def indirilenler():
     ev = os.path.expanduser("~")
-    for ad in ("Downloads", "İndirilenler", "Indirilenler"):
+    for ad in ("Downloads", "\u0130ndirilenler", "Indirilenler"):
         y = os.path.join(ev, ad)
         if os.path.isdir(y):
             return y
     return None
 
 
-def zip_topla(yol, aday):
+def zip_topla(yol, aday, backend, frontend, hepsi):
     """ZIP icindeki taninan dosyalari aday sozlugune ekler."""
     try:
         z = zipfile.ZipFile(yol)
@@ -95,13 +126,13 @@ def zip_topla(yol, aday):
 
     girdiler = [b for b in z.infolist() if not b.is_dir()]
     adlar = [temel_ad(b.filename) for b in girdiler]
-    if not any(a in BACKEND or a in FRONTEND for a in adlar):
+    if not any(hedef_klasor(a, backend, frontend, hepsi) for a in adlar):
         z.close()
         return False, []
 
     eklenen = []
     for bilgi, ad in zip(girdiler, adlar):
-        if ad not in BACKEND and ad not in FRONTEND:
+        if not hedef_klasor(ad, backend, frontend, hepsi):
             continue
         try:
             zaman = time.mktime(bilgi.date_time + (0, 0, -1))
@@ -126,6 +157,8 @@ def main():
                     help="sadece ne yapacagini goster")
     ap.add_argument("--zorla", action="store_true",
                     help="hedef daha yeni olsa bile uzerine yaz")
+    ap.add_argument("--hepsi", action="store_true",
+                    help="taninmayan .py/.html dosyalarini da al")
     a = ap.parse_args()
 
     indir = indirilenler()
@@ -142,10 +175,12 @@ def main():
     backend = os.path.join(proje, "backend")
     frontend = os.path.join(proje, "frontend")
     os.makedirs(frontend, exist_ok=True)
+    listeleri_genislet(backend, frontend)
 
     # ---- adaylari topla ----
     aday = {}          # temel ad -> {veri|yol, zaman, kaynak}
     tuketilecek = []   # silinecek Downloads dosyalari
+    taninmayan = []
 
     for giris in sorted(os.listdir(indir)):
         yol = os.path.join(indir, giris)
@@ -153,14 +188,16 @@ def main():
             continue
 
         if giris.lower().endswith(".zip"):
-            bizim, eklenen = zip_topla(yol, aday)
+            bizim, eklenen = zip_topla(yol, aday, backend, frontend, a.hepsi)
             if bizim:
                 tuketilecek.append(yol)
                 print("zip acildi: %-22s (%d dosya)" % (giris, len(eklenen)))
             continue
 
         ad = temel_ad(giris)
-        if ad not in BACKEND and ad not in FRONTEND:
+        if not hedef_klasor(ad, backend, frontend, a.hepsi):
+            if ad.endswith(UZANTI_BACKEND + UZANTI_FRONTEND):
+                taninmayan.append(giris)
             continue
         zaman = os.path.getmtime(yol)
         onceki = aday.get(ad)
@@ -170,6 +207,8 @@ def main():
 
     if not aday:
         print("Downloads'ta kopyalanacak dosya yok.")
+        for t in taninmayan:
+            print("  taninmadi: %s   (almak icin: guncelle --hepsi)" % t)
         return 0
 
     # ---- kopyala ----
@@ -179,7 +218,7 @@ def main():
     print("-" * 72)
 
     for ad in sorted(aday):
-        klasor = hedef_klasor(ad, backend, frontend)
+        klasor = hedef_klasor(ad, backend, frontend, a.hepsi)
         hedef = os.path.join(klasor, ad)
         varsa = os.path.exists(hedef)
         eski = os.path.getsize(hedef) if varsa else 0
@@ -210,6 +249,8 @@ def main():
         yeni = os.path.getsize(hedef)
         sayac += 1
         isaret = "  <-- KUCULDU" if varsa and yeni < eski * 0.8 else ""
+        if not varsa:
+            isaret = "  <-- YENI"
         print("%-18s %8d %8d  %s%s" % (ad, eski, yeni,
                                        aday[ad]["kaynak"], isaret))
 
@@ -246,6 +287,8 @@ def main():
     print("kopyalanan : %d" % sayac)
     print("atlanan    : %d  (hedef daha yeniydi)" % atlanan)
     print("silinen    : %d" % silinen)
+    for t in taninmayan:
+        print("taninmadi  : %s   (almak icin: guncelle --hepsi)" % t)
     print("yedek      : her degisen dosyanin yaninda .onceki")
     print("proje      : %s" % proje)
     print("sonraki sefer backend klasorunde:  guncelle")

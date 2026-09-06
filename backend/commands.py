@@ -1,12 +1,16 @@
 """Icerik komutlarini cv_structured.json uzerinde uygular.
 
-Model burada yok. Girdi, classify.py'nin urettigi eylem sozlugudur.
-Hedefi gercek basliklarla eslestiren, bulamayinca soran, hicbir sey
-uydurmayan taraf burasi. Model olmayan bir bolume isaret ederse
-eslesme sifir doner ve degisiklik yapilmaz.
+Model burada yok. Girdi, classify.py'nin urettigi eylem sozlugu ya da
+eylem listesidir. Hedefi gercek basliklar ve gercek kayitlarla eslestiren,
+bulamayinca soran, hicbir sey uydurmayan taraf burasi. Model olmayan bir
+bolume isaret ederse eslesme sifir doner ve degisiklik yapilmaz.
 
 Her degisiklikten once snapshot alinir; geri alma dizinden okunur,
 bellekte durum tutulmaz (uvicorn --reload yeniden baslatabilir).
+
+6d-6: apply_all() adimlari SIRAYLA uygular ve tek sonuc dondurur. Cagiran
+taraf tek snapshot alir, boylece cok adimli komut tek "geri al" ile doner.
+Bir adim bolum adini degistirirse sonraki adimlar eski adi da bulur.
 """
 
 import json
@@ -21,6 +25,17 @@ HIST = OUT / "history"
 MAX_HIST = 50          # bu kadar snapshot saklanir
 MIN_GUVEN = 0.5        # altinda uygulamaz, sorar
 MAX_BASLIK = 60        # yeni bolum basligi uzunluk siniri
+MAX_METIN = 300        # kayit alani uzunluk siniri
+
+TASARIM_EYLEMLERI = ("tasarim", "tasarim_sifirla")
+
+# classify.py'nin "alan" degeri -> cv_structured.json anahtari
+ALAN_ANAHTAR = {
+    "baslik": "title",
+    "altbaslik": "subtitle",
+    "tarih": "date",
+    "metin": "bullets",
+}
 
 
 # --- eslestirme -------------------------------------------------------
@@ -101,6 +116,17 @@ def _kayit_yok(cv, hedef, hits):
         hedef, len(hits), " | ".join(ornek)))
 
 
+def _yeni_kayit(deger):
+    """\"baslik | altbaslik | tarih\" bicimini ayirir, yoksa hepsi baslik."""
+    parca = [p.strip() for p in str(deger).split("|")]
+    kayit = {"title": parca[0], "subtitle": "", "date": "", "bullets": []}
+    if len(parca) > 1:
+        kayit["subtitle"] = parca[1]
+    if len(parca) > 2:
+        kayit["date"] = parca[2]
+    return kayit
+
+
 # --- uygulama ---------------------------------------------------------
 
 def apply(cv, act):
@@ -109,6 +135,7 @@ def apply(cv, act):
     eylem = act.get("eylem", "belirsiz")
     hedef = act.get("hedef", "")
     bolum = act.get("bolum", "")
+    alan = (act.get("alan") or "").strip()
     deger = (act.get("deger") or "").strip()
     try:
         guven = float(act.get("guven") or 0)
@@ -119,9 +146,8 @@ def apply(cv, act):
         return cv, _no("Komutu anlayamadim. Bolumler: {}".format(
             ", ".join(headings(cv))))
 
-    if eylem == "tasarim":
-        return cv, _no("Bu bir tasarim komutu, icerige dokunmuyor. "
-                       "Asama 6d'de baglanacak.")
+    if eylem in TASARIM_EYLEMLERI:
+        return cv, _no("Bu bir tasarim komutu, icerige dokunmuyor.")
 
     if guven < MIN_GUVEN:
         return cv, _no("Emin olamadim (guven {:.0%}). Biraz daha acik "
@@ -147,6 +173,48 @@ def apply(cv, act):
         if not sec["items"]:
             msg += " Bolum artik bos."
         return cv, _yes(msg)
+
+    if eylem == "kayit_ekle":
+        if not deger:
+            return cv, _no("Eklenecek metin bos kaldi.")
+        if len(deger) > MAX_METIN:
+            return cv, _no("Eklenecek metin cok uzun ({} karakter, sinir "
+                           "{}).".format(len(deger), MAX_METIN))
+        idx = find_sections(cv, hedef) or find_sections(cv, bolum)
+        if len(idx) != 1:
+            return cv, _bolum_yok(cv, hedef or bolum, idx)
+        sec = cv["sections"][idx[0]]
+        sec.setdefault("items", []).append(_yeni_kayit(deger))
+        return cv, _yes("{} bolumune \"{}\" eklendi ({}. kayit).".format(
+            sec.get("heading", ""), deger[:60], len(sec["items"])))
+
+    if eylem == "kayit_duzenle":
+        if not deger:
+            return cv, _no("Yeni metin bos kaldi.")
+        if len(deger) > MAX_METIN:
+            return cv, _no("Yeni metin cok uzun ({} karakter, sinir "
+                           "{}).".format(len(deger), MAX_METIN))
+        anahtar = ALAN_ANAHTAR.get(norm(alan) or "baslik")
+        if not anahtar:
+            return cv, _no("Bilinmeyen alan: {}. Alanlar: baslik, altbaslik, "
+                           "tarih, metin.".format(alan))
+        hits = find_items(cv, hedef, bolum)
+        if len(hits) != 1:
+            return cv, _kayit_yok(cv, hedef, hits)
+        si, ii = hits[0]
+        sec = cv["sections"][si]
+        it = sec["items"][ii]
+        ad = (it.get("title") or "").strip()[:40]
+        if anahtar == "bullets":
+            it.setdefault("bullets", []).append(deger)
+            return cv, _yes("{} / \"{}\" kaydina madde eklendi: {}".format(
+                sec.get("heading", ""), ad, deger[:60]))
+        eski = (it.get(anahtar) or "").strip()
+        it[anahtar] = deger
+        return cv, _yes("{} / \"{}\" kaydinin {} alani degisti: {} -> "
+                        "{}".format(sec.get("heading", ""), ad, norm(alan)
+                                    or "baslik", eski[:40] or "(bos)",
+                                    deger[:60]))
 
     if eylem == "bolum_adi":
         if not deger:
@@ -180,6 +248,67 @@ def apply(cv, act):
             sec.get("heading", ""), hedef_i + 1))
 
     return cv, _no("Bilinmeyen eylem: {}".format(eylem))
+
+
+def apply_all(cv, adimlar):
+    """Adim listesini sirayla uygular. (yeni_cv, sonuc) dondurur.
+
+    Tasarim adimlarina dokunmaz, sonuc["tasarim"] icinde cagirana birakir.
+    Snapshot burada alinmaz; cok adimli komut tek snapshot ile geri donsun
+    diye bu is cagiranin.
+    """
+    cv = deepcopy(cv)
+    if isinstance(adimlar, dict):
+        adimlar = adimlar.get("adimlar") or [adimlar]
+    adimlar = [a for a in (adimlar or []) if isinstance(a, dict)]
+    if not adimlar:
+        adimlar = [{"eylem": "belirsiz"}]
+
+    coklu = len(adimlar) > 1
+    sonuclar = []
+    tasarim = []
+    takma = {}          # eski baslik (norm) -> yeni baslik
+    uygulanan = 0
+
+    for i, ham in enumerate(adimlar, 1):
+        act = dict(ham)
+        if act.get("eylem") in TASARIM_EYLEMLERI:
+            tasarim.append(act)
+            continue
+
+        for k in ("hedef", "bolum"):
+            yeni_ad = takma.get(norm(act.get(k)))
+            if yeni_ad:
+                act[k] = yeni_ad
+
+        cv, r = apply(cv, act)
+
+        if r["applied"] and act.get("eylem") == "bolum_adi":
+            takma[norm(ham.get("hedef"))] = act.get("deger")
+
+        mesaj = r["message"]
+        if coklu and act.get("eylem") == "belirsiz":
+            mesaj = "Bu adim anlasilmadi."
+        uygulanan += r["applied"]
+        sonuclar.append({"adim": i, "eylem": act.get("eylem", "belirsiz"),
+                         "applied": r["applied"], "message": mesaj})
+
+    if not sonuclar:
+        birlesik = ""
+    elif len(sonuclar) == 1:
+        birlesik = sonuclar[0]["message"]
+    else:
+        birlesik = "  ".join("{}) {}".format(s["adim"], s["message"])
+                             for s in sonuclar)
+
+    return cv, {
+        "applied": uygulanan > 0,
+        "message": birlesik,
+        "sonuclar": sonuclar,
+        "tasarim": tasarim,
+        "uygulanan": uygulanan,
+        "toplam": len(sonuclar),
+    }
 
 
 # --- disk ve gecmis ---------------------------------------------------

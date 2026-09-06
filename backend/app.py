@@ -1,7 +1,10 @@
 """CV Studio — yerel sunucu
 
+Asama 6d-6: /command artik EYLEM LISTESI uygular. Icerik adimlari
+commands.apply_all ile sirayla islenir, tasarim adimlari design.py'ye
+gider, hepsi TEK snapshot'a girer; tek "geri al" ile hepsi doner.
 Asama 6d-5b: /voice yonlendiricisi baglandi (voice.py).
-Asama 6d-4a: /command cevabi artik modelin `thinking` metnini de dondurur.
+Asama 6d-4a: /command cevabi modelin `thinking` metnini de dondurur.
   /command        icerik -> commands.py, tasarim -> design.py + cssguard
   /undo           son degisikligi geri alir (icerik ve CSS birlikte)
   /design/reset   cv_overrides.css'i siler
@@ -103,6 +106,44 @@ def state():
 
 # --- komutlar ---------------------------------------------------------
 
+def _tasarim_adimlari(text, adimlar, mevcut_css):
+    """Tasarim adimlarini sirayla isler. (css, mesajlar, uygulanan, sure)."""
+    css = mevcut_css
+    mesajlar = []
+    uygulanan = 0
+    sure = 0.0
+    info = None
+
+    for a in adimlar:
+        if a.get("eylem") == "tasarim_sifirla":
+            if css.strip():
+                css = ""
+                uygulanan += 1
+                mesajlar.append("Tasarim sifirlandi, sayfa olculen haline dondu.")
+            else:
+                mesajlar.append("Zaten hicbir tasarim degisikligi yok.")
+            continue
+
+        if info is None:
+            info = render_cv.render()
+        r, diag = design.design(text, ctx=design.context(info, css))
+        sure += diag.get("sure", 0) or 0
+
+        if not r["css"]:
+            mesajlar.append("Uygulanabilir CSS cikmadi. {}".format(
+                "; ".join(r["atilan"][:3]) or r["ozet"]))
+            continue
+
+        css = (css.rstrip() + "\n" + r["css"]).strip() if css.strip() else r["css"]
+        uygulanan += 1
+        mesaj = r["ozet"] or "Tasarim guncellendi."
+        if r["atilan"]:
+            mesaj += " Atilan: {}.".format("; ".join(r["atilan"][:3]))
+        mesajlar.append(mesaj)
+
+    return css, mesajlar, uygulanan, sure
+
+
 @app.post("/command")
 def command(cmd: Command):
     """Model anlar, Python uygular. Model CV'ye metin yazmaz."""
@@ -122,62 +163,44 @@ def command(cmd: Command):
     except llm.LLMError as e:
         return {"ok": False, "error": "Model cevap vermedi. {}".format(e)}
 
-    if act["eylem"] == "tasarim_sifirla":
-        r = design_reset()
-        r["eylem"] = "tasarim_sifirla"
-        r["guven"] = act.get("guven", 1.0)
-        r["sure"] = diag.get("sure", 0)
-        r["thinking"] = diag.get("thinking", "")
-        return r
+    adimlar = act.get("adimlar") or [act]
+    mevcut_css = commands.load_css()
 
-    if act["eylem"] == "tasarim":
-        return _tasarim(text, cv)
+    yeni_cv, sonuc = commands.apply_all(cv, adimlar)
 
-    yeni, sonuc = commands.apply(cv, act)
-
-    if sonuc["applied"]:
-        commands.snapshot(cv, note=sonuc["message"])   # ONCEKI hali sakla
-        commands.save(yeni)
-
-    return {
-        "ok": True,
-        "applied": sonuc["applied"],
-        "message": sonuc["message"],
-        "eylem": act["eylem"],
-        "guven": act["guven"],
-        "sure": diag["sure"],
-        "thinking": diag.get("thinking", ""),
-        "depth": commands.depth(),
-    }
-
-
-def _tasarim(text, cv):
-    """Model CSS yazar, cssguard suzer, override katmanina eklenir."""
-    info = render_cv.render()
-    mevcut = commands.load_css()
     try:
-        r, diag = design.design(text, ctx=design.context(info, mevcut))
+        css, tasarim_mesaj, tasarim_uygulanan, tasarim_sure = _tasarim_adimlari(
+            text, sonuc["tasarim"], mevcut_css)
     except llm.LLMError as e:
         return {"ok": False, "error": "Model cevap vermedi. {}".format(e)}
 
-    if not r["css"]:
-        return {"ok": True, "applied": False, "eylem": "tasarim",
-                "guven": 1.0, "sure": diag["sure"], "depth": commands.depth(),
-                "thinking": diag.get("thinking", ""),
-                "message": "Uygulanabilir CSS cikmadi. {}".format(
-                    "; ".join(r["atilan"][:3]) or r["ozet"])}
+    mesajlar = ([sonuc["message"]] if sonuc["sonuclar"] else []) + tasarim_mesaj
+    mesaj = "  ".join(m for m in mesajlar if m) or "Komutu anlayamadim."
 
-    commands.snapshot(cv, note=r["ozet"] or "tasarim degisikligi", css=mevcut)
-    commands.save_css((mevcut.rstrip() + "\n" + r["css"]).strip()
-                      if mevcut.strip() else r["css"])
+    if sonuc["applied"] or tasarim_uygulanan:
+        commands.snapshot(cv, note=mesaj[:200], css=mevcut_css)   # TEK snapshot
+        if sonuc["applied"]:
+            commands.save(yeni_cv)
+        if css != mevcut_css:
+            commands.save_css(css)
 
-    mesaj = r["ozet"] or "Tasarim guncellendi."
-    if r["atilan"]:
-        mesaj += " Atilan: {}.".format("; ".join(r["atilan"][:3]))
-    return {"ok": True, "applied": True, "eylem": "tasarim",
-            "guven": 1.0, "sure": diag["sure"], "depth": commands.depth(),
-            "thinking": diag.get("thinking", ""),
-            "message": mesaj, "css": r["css"]}
+    guvenler = [a.get("guven", 0) for a in adimlar if isinstance(a, dict)]
+    n = len(adimlar)
+
+    return {
+        "ok": True,
+        "applied": bool(sonuc["applied"] or tasarim_uygulanan),
+        "message": mesaj,
+        "eylem": adimlar[0].get("eylem", "belirsiz") if n == 1
+                 else "{} adim".format(n),
+        "adimlar": [a.get("eylem", "belirsiz") for a in adimlar],
+        "sonuclar": sonuc["sonuclar"],
+        "guven": round(min(guvenler), 2) if guvenler else 0.0,
+        "sure": round((diag.get("sure", 0) or 0) + tasarim_sure, 1),
+        "thinking": diag.get("thinking", ""),
+        "depth": commands.depth(),
+        "css": css if css != mevcut_css else "",
+    }
 
 
 @app.post("/design/reset")
