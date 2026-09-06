@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Abdullah Seyda Aksakal — CV</title>
+<style>
+  @page { size: A4; margin: 12mm 14mm 11mm 14mm; }
+
+  * { box-sizing: border-box; }
+  html { background: #eceae5; }
+
+  body {
+    font-family: "Times New Roman", "Liberation Serif", Times, serif;
+    font-size: 9.9pt;
+    line-height: 1.27;
+    color: #000;
+    margin: 0;
+    background: #eceae5;
+  }
+
+  .sheet {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 24px auto;
+    padding: 12mm 14mm 11mm 14mm;
+    background: #fff;
+    box-shadow: 0 2px 14px rgba(0,0,0,.18);
+  }
+
+  /* ---------- HEADER ---------- */
+  .header {
+    display: grid;
+    grid-template-columns: 29mm 1fr;
+    column-gap: 7mm;
+    align-items: center;
+    margin-bottom: 4.6mm;
+  }
+  .avatar { width: 29mm; height: 29mm; border-radius: 50%; overflow: hidden; }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  .name { font-size: 23pt; font-weight: 400; margin: 0 0 1.4mm 0; line-height: 1.05; }
+  .role { font-size: 10pt; font-weight: 700; margin: 0 0 1.4mm 0; letter-spacing: .2px; }
+  .contact { font-size: 10pt; margin: 0; }
+  .contact .sep { padding: 0 4px; color: #444; }
+
+  /* ---------- SECTIONS ---------- */
+  .section { margin-top: 3.5mm; }
+
+  /* Başlık artık sağ sütunun başında; altındaki çizgi tüm sütun boyunca uzuyor.
+     Sol hücre, başlığın hizasındaki tarih için kullanılıyor. */
+  .section-head {
+    display: grid;
+    grid-template-columns: 37mm 1fr;
+    column-gap: 5mm;
+    align-items: end;
+    margin-bottom: 2.2mm;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .section-head .meta {
+    font-weight: 700;
+    font-size: 10pt;
+    white-space: nowrap;
+    padding-bottom: 1mm;
+  }
+  .section-head .label {
+    font-weight: 700;
+    font-size: 10.4pt;
+    letter-spacing: .3px;
+    padding-bottom: 1mm;
+    border-bottom: 1px solid #000;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 37mm 1fr;
+    column-gap: 5mm;
+    margin-bottom: 1.9mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .row:last-child { margin-bottom: 0; }
+  .row .meta { font-weight: 700; font-size: 10pt; }
+
+  .entry-title { font-weight: 700; margin: 0; }
+  .entry-sub { margin: 0; }
+
+  /* ---------- WORK EXPERIENCE ---------- */
+  .exp-list { margin: 2.0mm 0 0 0; padding: 0; list-style: none; }
+  .exp-list li { margin: 0 0 1.5mm 0; break-inside: avoid; page-break-inside: avoid; }
+  .exp-list li:last-child { margin-bottom: 0; }
+
+  .plain { margin: 0; }
+
+  /* ---------- PRINT ---------- */
+  @media print {
+    html, body { background: #fff; }
+    .sheet { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <header class="header">
+    <div class="avatar">
+      <img src="data:image/jpeg;base64,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" alt="Abdullah Seyda Aksakal">
+    </div>
+    <div>
+      <h1 class="name">Abdullah Seyda Aksakal</h1>
+      <p class="role">Fractional CTO &amp; Principal Architect</p>
+      <p class="contact">
+        Istanbul, Turkey <span class="sep">|</span> +90 535 660 41 03 <span class="sep">|</span> aseydaaksakal@gmail.com
+      </p>
+    </div>
+  </header>
+
+  <!-- ============ WORK EXPERIENCE ============ -->
+  <section class="section">
+    <div class="section-head">
+      <div class="meta">January 2010 – Present</div>
+      <div class="label">WORK EXPERIENCE</div>
+    </div>
+    <div class="row">
+      <div class="meta"></div>
+      <div>
+        <p class="entry-title">Independent Tech Consulting</p>
+        <p class="entry-sub">Fractional CTO &amp; Principal Architect</p>
+
+        <ul class="exp-list">
+          <li><b>Engineering Leadership:</b> End-to-end strategic management, organizational
+            scaling, and technical mentorship of 100+ multidisciplinary engineering teams
+            (DevOps, QA, AI, Full-Stack).</li>
+
+          <li><b>Full-Stack &amp; Cross-Platform Engineering:</b> Architecting and building
+            high-performance web, mobile (iOS/Android), and desktop (macOS/Windows/Linux)
+            applications from scratch using modern polyglot stacks (Rust, Go, Python, C++,
+            TypeScript, C#).</li>
+
+          <li><b>Distributed Systems Architecture:</b> Designing low-latency, high-throughput,
+            and highly available cloud-native architectures (AWS/GCP/Azure/Kubernetes).</li>
+
+          <li><b>Deep Tech &amp; Generative AI:</b> Developing autonomous AI systems
+            (Multi-Agent Orchestration), enterprise RAG architectures, customized LLM
+            fine-tuning (LoRA/QLoRA), and AGI-focused product infrastructures.</li>
+
+          <li><b>Quality Engineering &amp; Test Automation:</b> Building end-to-end manual and
+            automated testing frameworks (UI/API/Load), continuous testing pipelines, and
+            QA/QC standards from the ground up.</li>
+
+          <li><b>DevSecOps &amp; Cybersecurity:</b> Implementing Zero-Trust security
+            architectures, automated code security scanning (SAST/DAST), and robust CI/CD
+            pipelines across all OS and web environments.</li>
+
+          <li><b>Business Impact &amp; Strategy:</b> Managing technical due diligence for M&amp;A
+            processes, achieving 40%+ cloud infrastructure cost optimizations, and leading
+            technology for multi-million dollar business volumes.</li>
+
+          <li><b>Core Tech Environment:</b> Python, Rust, Go, C++, TypeScript, Java, C#, AWS,
+            GCP, Kubernetes, Docker, PyTorch, LangChain, Kafka, Redis, PostgreSQL, Linux,
+            DevSecOps.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CERTIFICATIONS ============ -->
+  <section class="section">
+    <div class="section-head">
+      <div class="meta"></div>
+      <div class="label">CERTIFICATIONS</div>
+    </div>
+    <div class="row">
+      <div class="meta">2024</div>
+      <div><p class="plain"><b>AWS Certified Solutions Architect – Professional</b> / Amazon Web Services</p></div>
+    </div>
+    <div class="row">
+      <div class="meta">2025</div>
+      <div><p class="plain"><b>Generative AI &amp; LLM Systems Architecture</b> / DeepLearning.AI</p></div>
+    </div>
+    <div class="row">
+      <div class="meta">2023</div>
+      <div><p class="plain"><b>Certified Kubernetes Administrator (CKA) &amp; DevSecOps Engineering</b> / CNCF</p></div>
+    </div>
+    <div class="row">
+      <div class="meta">2025</div>
+      <div><p class="plain"><b>Technology Executive Leadership &amp; Strategy</b> / MIT Sloan Executive Education</p></div>
+    </div>
+  </section>
+
+  <!-- ============ SKILLS ============ -->
+  <section class="section">
+    <div class="section-head">
+      <div class="meta"></div>
+      <div class="label">SKILLS</div>
+    </div>
+    <div class="row">
+      <div class="meta"></div>
+      <div>
+        <p class="plain">Fractional CTO Strategy, Enterprise System Architecture, Autonomous AI
+          Agents &amp; AGI Systems, High-Throughput Distributed Systems, Engineering Scale &amp;
+          Leadership (100+), Cloud-Native Infrastructure (AWS/GCP/Azure/Kubernetes), DevSecOps
+          &amp; Zero-Trust Security, Polyglot Systems Engineering (Rust/Go/Python/C++), M&amp;A
+          Technical Due Diligence, Multi-Million $ Cost Optimization &amp; ROI</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ EDUCATION ============ -->
+  <section class="section">
+    <div class="section-head">
+      <div class="meta">June 2018</div>
+      <div class="label">EDUCATION</div>
+    </div>
+    <div class="row">
+      <div class="meta"></div>
+      <div><p class="plain"><b>Istanbul Şehir University</b> — Associate Degree in Computer Programming</p></div>
+    </div>
+  </section>
+
+  <!-- ============ LANGUAGES ============ -->
+  <section class="section">
+    <div class="section-head">
+      <div class="meta"></div>
+      <div class="label">LANGUAGES</div>
+    </div>
+    <div class="row">
+      <div class="meta">English</div>
+      <div><p class="plain">Full Professional Proficiency</p></div>
+    </div>
+  </section>
+
+  <!-- ============ INTERESTS ============ -->
+  <section class="section">
+    <div class="section-head">
+      <div class="meta"></div>
+      <div class="label">INTERESTS</div>
+    </div>
+    <div class="row">
+      <div class="meta"></div>
+      <div><p class="plain">Open Source AI Contributions, Deep Tech Research</p></div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
