@@ -51,6 +51,10 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .tool:disabled{opacity:.4;cursor:default}
 .tool[aria-pressed="true"]{color:#12171c;background:var(--accent);border-color:var(--accent)}
 .sep{width:1px;height:22px;background:var(--edge-soft)}
+#oturum{max-width:210px;color:var(--text);background:var(--panel);border:1px solid var(--edge);border-radius:6px;padding:5px 8px}
+#upload{display:none}
+.upload{padding:5px 10px;border:1px dashed var(--edge);border-radius:6px;color:var(--dim);font-size:13px;cursor:pointer}
+.upload:hover,.upload.drag{color:var(--text);border-color:var(--accent);background:#202a33}
 
 main{display:grid;grid-template-columns:1fr 360px;min-height:0}
 #left{overflow:auto;display:flex;flex-direction:column;min-width:0}
@@ -163,6 +167,9 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
 
   <header id="bar">
     <div class="brand">CV Studio</div>
+    <label class="upload" id="uploadLabel" for="upload">PDF/DOCX yükle</label>
+    <input id="upload" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+    <select id="oturum" title="CV oturumu"><option>Oturumlar yükleniyor</option></select>
     <div id="who">yükleniyor</div>
     <div class="grow"></div>
     <div class="tools">
@@ -234,6 +241,8 @@ const $ = s => document.querySelector(s);
 const stage = $("#stage"), left = $("#left"), wrap = $("#wrap"), sheet = $("#sheet");
 const cmd = $("#cmd"), send = $("#send"), log = $("#log"), hint = $("#hint");
 const undoBtn = $("#undo"), dresetBtn = $("#dreset");
+const upload = $("#upload"), uploadLabel = $("#uploadLabel"), oturum = $("#oturum");
+let aktifOturum = "";
 
 /* ---------- zoom: transform yerine CSS zoom ---------- */
 let zmode = "fit";
@@ -342,12 +351,13 @@ async function jpost(url, body){
   return r.json();
 }
 async function refreshSheet(){
-  await fetch("/render");
-  sheet.src = "/preview?t=" + Date.now();
+  if (!aktifOturum) return;
+  await fetch("/render?id=" + encodeURIComponent(aktifOturum));
+  sheet.src = "/preview?id=" + encodeURIComponent(aktifOturum) + "&t=" + Date.now();
 }
 async function loadState(){
   try{
-    const s = await (await fetch("/state")).json();
+    const s = await (await fetch("/state?id=" + encodeURIComponent(aktifOturum))).json();
     if (!s.ok) { $("#who").textContent = s.error || "durum okunamadı"; return; }
     $("#who").textContent = [s.name, s.title].filter(Boolean).join(", ");
     const n = s.sections.reduce((a, x) => a + x.items, 0);
@@ -356,6 +366,31 @@ async function loadState(){
     undoBtn.textContent = s.depth ? "Geri al (" + s.depth + ")" : "Geri al";
   }catch(e){ $("#who").textContent = "sunucuya ulaşılamadı"; }
 }
+
+async function loadOturumlar(){
+  const d = await (await fetch("/oturum")).json();
+  aktifOturum = d.aktif || "";
+  oturum.innerHTML = "";
+  if (!d.oturumlar.length) oturum.add(new Option("Henüz CV yüklenmedi", ""));
+  for (const o of d.oturumlar) oturum.add(new Option((o.ad || o.id) + " · " + (o.kaynak || "CV"), o.id, false, o.id === aktifOturum));
+}
+async function yukleDosya(file){
+  if (!file) return;
+  const data = new FormData(); data.append("dosya", file, file.name);
+  uploadLabel.textContent = "Yükleniyor…"; upload.disabled = true;
+  try{
+    const r = await (await fetch("/upload", {method:"POST", body:data})).json();
+    if (!r.ok) throw new Error(r.error || "Yükleme tamamlanamadı");
+    aktifOturum = r.id; await loadOturumlar(); await refreshSheet(); await loadState();
+    hint.textContent = file.name + " işlendi: " + r.bolum + " bölüm, kapsam %" + Math.round(r.kapsama * 100);
+  }catch(e){ hint.textContent = "Yükleme hatası: " + e.message; }
+  finally{ upload.value = ""; upload.disabled = false; uploadLabel.textContent = "PDF/DOCX yükle"; }
+}
+upload.addEventListener("change", () => yukleDosya(upload.files[0]));
+uploadLabel.addEventListener("dragover", e => { e.preventDefault(); uploadLabel.classList.add("drag"); });
+uploadLabel.addEventListener("dragleave", () => uploadLabel.classList.remove("drag"));
+uploadLabel.addEventListener("drop", e => { e.preventDefault(); uploadLabel.classList.remove("drag"); yukleDosya(e.dataTransfer.files[0]); });
+oturum.addEventListener("change", async () => { if (!oturum.value) return; await jpost("/oturum/sec", {id:oturum.value}); aktifOturum = oturum.value; await refreshSheet(); await loadState(); });
 
 /* ---------- sira: arka planda tek tek calisir ---------- */
 const queue = [];
@@ -398,7 +433,7 @@ function submit(){
   if (!t) return;
   cmd.value = "";
   cmd.style.height = "auto";
-  run(t, () => jpost("/command", {text: t}));
+  run(t, () => jpost("/command", {text: t, id: aktifOturum}));
 }
 send.addEventListener("click", submit);
 cmd.addEventListener("keydown", e => {
@@ -409,9 +444,9 @@ cmd.addEventListener("input", () => {
   cmd.style.height = Math.min(cmd.scrollHeight, 160) + "px";
 });
 undoBtn.addEventListener("click", () =>
-  run("Geri al", () => jpost("/undo").then(r => ({...r, eylem: "geri_al"}))));
+  run("Geri al", () => jpost("/undo?id=" + encodeURIComponent(aktifOturum)).then(r => ({...r, eylem: "geri_al"}))));
 dresetBtn.addEventListener("click", () =>
-  run("Tasarımı sıfırla", () => jpost("/design/reset").then(r => ({...r, eylem: "tasarim_sifirla"}))));
+  run("Tasarımı sıfırla", () => jpost("/design/reset?id=" + encodeURIComponent(aktifOturum)).then(r => ({...r, eylem: "tasarim_sifirla"}))));
 /* ---------- sesli komut (6d-5c) ---------- */
 const mic = $("#mic"), sesSure = $("#sessure"), sesBilgi = $("#sesbilgi");
 let kaydedici = null, sesParcalari = [], kayitta = false, sayacId = 0, t0ses = 0;
@@ -518,8 +553,7 @@ addEventListener("keydown", e => {
 
 /* ---------- baslangic ---------- */
 applyZoom();
-loadState();
-refreshSheet();
+loadOturumlar().then(async () => { await loadState(); await refreshSheet(); });
 isit();
 </script>
 </body>

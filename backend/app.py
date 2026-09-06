@@ -19,7 +19,7 @@ Calistirma (backend klasorunden):
 import json
 from pathlib import Path
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, File, Form, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
@@ -28,12 +28,13 @@ import commands
 import design
 import llm
 import render_cv
+import pipeline
+import session
 from voice import router as voice_router
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "output"
 FRONT = ROOT / "frontend"
-STRUCT = OUT / "cv_structured.json"
 
 NO_CACHE = {"Cache-Control": "no-store"}
 
@@ -43,6 +44,30 @@ app.include_router(voice_router)
 
 class Command(BaseModel):
     text: str
+    id: str = ""
+
+
+class OturumSec(BaseModel):
+    id: str
+
+
+class OturumAd(BaseModel):
+    id: str
+    ad: str
+
+
+def _hazirla(oid=""):
+    """Her istekte oturumu yeniden bagla; reload sonrasi yol kaybolmaz."""
+    try:
+        return session.hazirla(oid)
+    except ValueError:
+        return ""
+
+
+@app.on_event("startup")
+def baslat():
+    session.devral()
+    session.hazirla()
 
 
 # --- arayuz -----------------------------------------------------------
@@ -61,8 +86,12 @@ def favicon():
 # --- onizleme ---------------------------------------------------------
 
 @app.get("/render")
-def do_render():
+def do_render(id: str = ""):
     """cv_structured.json -> cv_generated.html. Olculen degerleri dondurur."""
+    oid = _hazirla(id)
+    if not oid:
+        return {"ok": False,
+                "error": "cv_structured.json bulunamadi. Once analyze_cv.py calistir."}
     try:
         info = render_cv.render()
     except FileNotFoundError:
@@ -74,13 +103,17 @@ def do_render():
     info.pop("html")
     info["path"] = str(info["path"])
     info["ok"] = True
+    info["id"] = oid
     return info
 
 
 @app.get("/preview")
-def preview():
+def preview(id: str = ""):
     """Diskteki cv_generated.html. compare_cv.py ile ayni dosya."""
-    p = OUT / "cv_generated.html"
+    if not _hazirla(id):
+        return HTMLResponse("<p>Onizleme yok. Once /render cagir.</p>",
+                            status_code=404, headers=NO_CACHE)
+    p = render_cv.HTML_OUT
     if not p.exists():
         return HTMLResponse("<p>Onizleme yok. Once /render cagir.</p>",
                             status_code=404, headers=NO_CACHE)
@@ -88,9 +121,10 @@ def preview():
 
 
 @app.get("/state")
-def state():
+def state(id: str = ""):
     """Icerik ozeti: hangi bolumde kac kayit, kac adim geri alinabilir."""
-    if not STRUCT.exists():
+    oid = _hazirla(id)
+    if not oid or not commands.STRUCT.exists():
         return {"ok": False, "error": "cv_structured.json bulunamadi."}
     cv = commands.load()
     return {
@@ -101,7 +135,67 @@ def state():
                       "items": len(s.get("items", []))}
                      for s in cv.get("sections", [])],
         "depth": commands.depth(),
+        "id": oid,
     }
+
+
+# --- dosya ve oturumlar ----------------------------------------------
+
+@app.post("/upload")
+async def upload(dosya: UploadFile = File(...), ad: str = Form("")):
+    """PDF/DOCX'i boyut kontrollu kaydeder, yeni bir oturumda isler."""
+    ad_dosya = dosya.filename or ""
+    uz = Path(ad_dosya).suffix.lower()
+    if uz not in pipeline.desteklenen():
+        return {"ok": False, "error": "Desteklenmeyen dosya turu: {}. Kabul edilen: {}"
+                .format(uz or "(uzantisiz)", ", ".join(pipeline.desteklenen()))}
+    icerik = await dosya.read()
+    if not icerik:
+        return {"ok": False, "error": "Dosya bos."}
+    if len(icerik) > pipeline.MAX_MB * 1024 * 1024:
+        return {"ok": False, "error": "Dosya boyutu {} MB sinirini asiyor."
+                .format(pipeline.MAX_MB)}
+    hedef = pipeline.benzersiz(ad_dosya)
+    hedef.parent.mkdir(parents=True, exist_ok=True)
+    hedef.write_bytes(icerik)
+    try:
+        return pipeline.calistir(hedef, ad=ad.strip(), kopyala=False)
+    except (ValueError, FileNotFoundError) as e:
+        return {"ok": False, "error": str(e)}
+    except llm.LLMError as e:
+        return {"ok": False, "error": "Model cevap vermedi. {}".format(e)}
+
+
+@app.get("/oturum")
+def oturum_liste():
+    return {"ok": True, "aktif": session.aktif(), "oturumlar": session.liste()}
+
+
+@app.post("/oturum/sec")
+def oturum_sec(istek: OturumSec):
+    try:
+        oid = session.sec(istek.id)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "id": oid, "oturum": session.ozet(oid)}
+
+
+@app.post("/oturum/sil")
+def oturum_sil(istek: OturumSec):
+    try:
+        silindi = session.sil(istek.id)
+    except ValueError as e:
+        silindi = False
+    if silindi:
+        session.hazirla()
+    return {"ok": silindi, "aktif": session.aktif()}
+
+
+@app.post("/oturum/ad")
+def oturum_ad(istek: OturumAd):
+    if not session.var(istek.id):
+        return {"ok": False, "error": "Oturum yok: {!r}".format(istek.id)}
+    return {"ok": True, "oturum": session.ad_ver(istek.id, istek.ad)}
 
 
 # --- komutlar ---------------------------------------------------------
@@ -145,8 +239,11 @@ def _tasarim_adimlari(text, adimlar, mevcut_css):
 
 
 @app.post("/command")
-def command(cmd: Command):
+def command(cmd: Command, id: str = ""):
     """Model anlar, Python uygular. Model CV'ye metin yazmaz."""
+    oid = cmd.id or id
+    if not _hazirla(oid):
+        return {"ok": False, "error": "cv_structured.json bulunamadi."}
     text = cmd.text.strip()
     if not text:
         return {"ok": False, "error": "Komut bos."}
@@ -200,11 +297,14 @@ def command(cmd: Command):
         "thinking": diag.get("thinking", ""),
         "depth": commands.depth(),
         "css": css if css != mevcut_css else "",
+        "id": session.baglanan(),
     }
 
 
 @app.post("/design/reset")
-def design_reset():
+def design_reset(id: str = ""):
+    if not _hazirla(id):
+        return {"ok": False, "error": "cv_structured.json bulunamadi."}
     if not commands.load_css().strip():
         return {"ok": True, "applied": False,
                 "message": "Zaten hicbir tasarim degisikligi yok.",
@@ -217,7 +317,10 @@ def design_reset():
 
 
 @app.post("/undo")
-def undo():
+def undo(id: str = ""):
+    if not _hazirla(id):
+        return {"ok": False, "applied": False,
+                "message": "Geri alinacak degisiklik yok.", "depth": 0}
     cv, mesaj = commands.undo()
     return {"ok": True, "applied": cv is not None, "message": mesaj,
             "depth": commands.depth()}
@@ -233,14 +336,17 @@ def compare():
 @app.get("/health")
 def health():
     kurulu = llm.available()
+    oid = _hazirla()
     return {
         "ok": True,
-        "struct": STRUCT.exists(),
+        "struct": bool(oid and commands.STRUCT.exists()),
         "front": FRONT.exists(),
         "ollama": bool(kurulu),
         "model": llm.MODEL,
         "model_kurulu": llm.MODEL in kurulu,
-        "gecmis": commands.depth(),
-        "overrides": bool(commands.load_css().strip()),
+        "gecmis": commands.depth() if oid else 0,
+        "overrides": bool(oid and commands.load_css().strip()),
         "voice": True,
+        "oturum": len(session.liste()),
+        "aktif": oid,
     }
