@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CV Studio</title>
+<style>
+:root {
+  --mat:    #c2c2c7;
+  --panel:  #eeeef0;
+  --paper:  #ffffff;
+  --edge:   #d5d5da;
+  --ink:    #17171a;
+  --soft:   #6a6a72;
+  --orig:   #9e392c;
+  --copy:   #35618f;
+  --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--mat); color: var(--ink);
+  font-family: var(--ui); font-size: 13px; line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--copy); outline-offset: 2px; }
+
+.app { display: grid; grid-template-columns: 360px 1fr; height: 100%; }
+
+/* --- sol: komutlar ------------------------------------------------- */
+
+.chat {
+  background: var(--panel); display: grid;
+  grid-template-rows: auto 1fr auto; min-height: 0; min-width: 0;
+}
+.chat > header { padding: 18px 20px 14px; }
+.chat h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.chat .who { margin: 2px 0 0; color: var(--soft); }
+.facts {
+  margin: 12px 0 0; padding: 0; list-style: none;
+  border-top: 1px solid var(--edge);
+}
+.facts li {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 4px 0; border-bottom: 1px solid var(--edge);
+}
+.facts .n { color: var(--soft); }
+
+.log {
+  overflow-y: auto; overflow-x: hidden; padding: 4px 20px 12px;
+  min-height: 0; min-width: 0;
+}
+.empty { color: var(--soft); padding: 16px 0; max-width: 34ch; }
+.msg {
+  padding: 8px 0 8px 12px; border-left: 2px solid var(--edge); margin: 10px 0;
+  overflow-wrap: anywhere;
+}
+.msg.you  { border-left-color: var(--ink); }
+.msg.app  { border-left-color: var(--edge); color: var(--soft); }
+.msg.ok   { border-left-color: var(--copy); }
+.msg.bad  { border-left-color: var(--orig); color: var(--orig); }
+.det { color: var(--soft); font-size: 11.5px; }
+
+.composer { padding: 12px 20px 16px; border-top: 1px solid var(--edge); }
+.composer textarea {
+  width: 100%; resize: none; border: 1px solid var(--edge); border-radius: 3px;
+  background: var(--paper); padding: 8px 10px; min-height: 62px;
+}
+.composer .row {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 8px 10px; margin-top: 8px;
+}
+.hint { color: var(--soft); font-size: 11.5px; }
+
+button {
+  border: 1px solid var(--ink); background: var(--ink); color: var(--paper);
+  padding: 6px 14px; border-radius: 3px; cursor: pointer;
+}
+button.quiet { background: transparent; color: var(--ink); border-color: var(--edge); }
+button:disabled { opacity: .45; cursor: default; }
+
+/* --- sag: sayfa ---------------------------------------------------- */
+
+.stage { display: grid; grid-template-rows: 1fr auto; min-height: 0; min-width: 0; }
+.mat { overflow: auto; display: grid; place-items: start center; padding: 24px; }
+.sheet { box-shadow: 0 1px 2px rgba(0,0,0,.22), 0 8px 24px rgba(0,0,0,.14); }
+.sheet iframe {
+  width: 794px; height: 1123px; border: 0; display: block;
+  transform-origin: top left; background: var(--paper);
+}
+
+.bar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 20px; background: var(--panel); border-top: 1px solid var(--edge);
+}
+.readout { color: var(--soft); }
+.readout b { color: var(--ink); font-weight: 600; }
+.spacer { flex: 1; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <aside class="chat">
+    <header>
+      <h1>CV Studio</h1>
+      <p class="who" id="who">yükleniyor…</p>
+      <ul class="facts" id="facts"></ul>
+    </header>
+
+    <div class="log" id="log">
+      <p class="empty">Komut yaz, sağdaki sayfa güncellensin.
+      İçerik için: bölüm silme, kayıt silme, başlık değiştirme, sıra.
+      Görünüm için: renk, punto, boşluk, çizgi, sütun.</p>
+    </div>
+
+    <div class="composer">
+      <textarea id="input" placeholder="SKILLS bölümünü kaldır"
+                aria-label="Komut"></textarea>
+      <div class="row">
+        <button id="send">Gönder</button>
+        <button class="quiet" id="undo" disabled>Geri al</button>
+        <button class="quiet" id="reset">Tasarımı sıfırla</button>
+        <span class="hint">Enter gönderir</span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="stage">
+    <div class="mat" id="mat">
+      <div class="sheet"><iframe id="pv" title="CV önizleme"></iframe></div>
+    </div>
+    <footer class="bar">
+      <button class="quiet" id="cmp">Orijinalle karşılaştır</button>
+      <span class="readout" id="readout">Henüz karşılaştırılmadı.</span>
+      <span class="spacer"></span>
+      <span class="readout" id="meta"></span>
+    </footer>
+  </main>
+
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const log = $("log");
+let ilkKomut = true;
+
+function say(text, cls) {
+  const empty = log.querySelector(".empty");
+  if (empty) empty.remove();
+  const p = document.createElement("p");
+  p.className = "msg " + cls;
+  p.textContent = text;
+  log.appendChild(p);
+  log.scrollTop = log.scrollHeight;
+  return p;
+}
+
+function detail(node, r) {
+  if (r.sure === undefined) return;
+  const s = document.createElement("span");
+  s.className = "det";
+  s.textContent = r.sure + "s · " + r.eylem +
+                  " · güven " + Math.round(r.guven * 100) + "%";
+  node.appendChild(document.createElement("br"));
+  node.appendChild(s);
+}
+
+function setDepth(n) {
+  const b = $("undo");
+  b.disabled = !n;
+  b.textContent = n ? "Geri al (" + n + ")" : "Geri al";
+}
+
+/* sayfayi panele sigdir */
+function fit() {
+  const box = $("mat");
+  const k = Math.min(1, (box.clientWidth - 48) / 794);
+  const sheet = box.querySelector(".sheet");
+  $("pv").style.transform = "scale(" + k + ")";
+  sheet.style.width = 794 * k + "px";
+  sheet.style.height = 1123 * k + "px";
+  sheet.style.overflow = "hidden";
+}
+addEventListener("resize", fit);
+
+async function refresh() {
+  const r = await fetch("/render").then((x) => x.json());
+  if (!r.ok) { say(r.error, "bad"); return; }
+  $("pv").src = "/preview?t=" + Date.now();
+  $("meta").innerHTML =
+    "gövde <b>" + r.body_pt + "pt</b> · başlık <b>" + r.head_pt + "pt</b>" +
+    " · kenar <b>" + r.pad_t + "/" + r.pad_l + "mm</b>" +
+    " · <b>" + r.length + "</b> karakter" +
+    (r.overrides ? " · <b>tasarım katmanı açık</b>" : "");
+  $("reset").disabled = !r.overrides;
+  fit();
+}
+
+async function loadState() {
+  const s = await fetch("/state").then((x) => x.json());
+  if (!s.ok) { $("who").textContent = s.error; return; }
+  $("who").textContent = s.name + " — " + s.title;
+  $("facts").innerHTML = s.sections
+    .map((x) => "<li><span>" + x.heading + "</span><span class='n'>" +
+                x.items + " kayıt</span></li>").join("");
+  setDepth(s.depth || 0);
+}
+
+async function send() {
+  const box = $("input");
+  const text = box.value.trim();
+  if (!text) return;
+  $("send").disabled = true;
+  say(text, "you");
+  box.value = "";
+  const pending = say(ilkKomut
+    ? "Düşünüyor… ilk komut modeli belleğe yükleyeceği için uzun sürebilir."
+    : "Düşünüyor…", "app");
+  try {
+    const r = await fetch("/command", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    }).then((x) => x.json());
+    ilkKomut = false;
+    pending.textContent = r.ok ? r.message : r.error;
+    pending.className = "msg " + (!r.ok ? "bad" : r.applied ? "ok" : "app");
+    if (r.ok) detail(pending, r);
+    if (r.depth !== undefined) setDepth(r.depth);
+    if (r.applied) { await refresh(); await loadState(); }
+  } catch (e) {
+    pending.textContent = "Sunucuya ulaşılamadı: " + e.message;
+    pending.className = "msg bad";
+  }
+  $("send").disabled = false;
+  box.focus();
+}
+
+$("send").onclick = send;
+$("input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+$("undo").onclick = async () => {
+  $("undo").disabled = true;
+  const r = await fetch("/undo", { method: "POST" }).then((x) => x.json());
+  say(r.message, r.applied ? "ok" : "app");
+  setDepth(r.depth || 0);
+  if (r.applied) { await refresh(); await loadState(); }
+};
+
+$("reset").onclick = async () => {
+  $("reset").disabled = true;
+  const r = await fetch("/design/reset", { method: "POST" }).then((x) => x.json());
+  say(r.message, r.applied ? "ok" : "app");
+  if (r.depth !== undefined) setDepth(r.depth);
+  if (r.applied) await refresh();
+};
+
+$("cmp").onclick = async () => {
+  $("cmp").disabled = true;
+  $("readout").textContent = "Ölçülüyor…";
+  const r = await fetch("/compare", { method: "POST" }).then((x) => x.json());
+  $("readout").textContent = r.message;
+  $("cmp").disabled = false;
+};
+
+loadState();
+refresh();
+$("pv").addEventListener("load", fit);
+</script>
+</body>
+</html>

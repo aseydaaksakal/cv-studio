@@ -1,0 +1,15 @@
+# uretilen ve kisisel dosyalar
+.venv/
+__pycache__/
+*.pyc
+output/
+uploads/
+*.pdf
+*.docx
+*.wav
+*.png
+*.jpg
+*.zip
+*.onceki
+cv_layout.json
+cv_structured.json
