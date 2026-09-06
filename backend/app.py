@@ -16,7 +16,10 @@ Calistirma (backend klasorunden):
     http://127.0.0.1:8000
 """
 
+import base64
 import json
+import os
+import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Response, UploadFile
@@ -37,9 +40,26 @@ OUT = ROOT / "output"
 FRONT = ROOT / "frontend"
 
 NO_CACHE = {"Cache-Control": "no-store"}
+ACCESS_PASSWORD = os.environ.get("CV_STUDIO_ACCESS_PASSWORD", "")
 
 app = FastAPI(title="CV Studio")
 app.include_router(voice_router)
+
+
+@app.middleware("http")
+async def access_control(request, call_next):
+    """Canli ortamda uygulamayi parola ile korur; health Render icin aciktir."""
+    if not ACCESS_PASSWORD or request.url.path == "/health":
+        return await call_next(request)
+    received = request.headers.get("authorization", "")
+    expected = "Basic " + base64.b64encode(
+        ("owner:" + ACCESS_PASSWORD).encode("utf-8")).decode("ascii")
+    if not secrets.compare_digest(received, expected):
+        return Response(status_code=401, headers={
+            "WWW-Authenticate": 'Basic realm="CV Studio"',
+            "Cache-Control": "no-store",
+        })
+    return await call_next(request)
 
 
 class Command(BaseModel):
