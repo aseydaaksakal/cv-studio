@@ -4,10 +4,12 @@
 import { test, expect } from "@playwright/test";
 import { EDITED, fakeMic, speakAndTranscribe } from "./voice.shared.mjs";
 
+/* One attempt only: a retry costs another model download and another minutes-long CPU run. */
+test.describe.configure({ retries: 0 });
 test.use(fakeMic("voice-en.wav"));
 
 test("spoken English is detected, transcribed into the composer, and Enter sends it to the model", async ({ page }) => {
-  test.setTimeout(480_000);
+  test.setTimeout(900_000);
   const text = await speakAndTranscribe(page);
   await expect(page.locator("#mic-status")).toContainText("Heard English");
   expect(text.toLowerCase()).toMatch(/summar|certif|section|shorten/);

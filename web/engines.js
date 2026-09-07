@@ -28,6 +28,16 @@ const TRANSFORMERS_URL = "https://cdn.jsdelivr.net/npm/@huggingface/transformers
 
 export function hasWebGPU() { return typeof navigator !== "undefined" && "gpu" in navigator; }
 
+/* navigator.gpu can exist while the machine has no adapter to give (headless browsers, blocklisted drivers).
+   Asking for the adapter is the only honest test, and it is asynchronous, so the answer is cached. */
+let adapterOk = null;
+export async function webgpuUsable() {
+  if (adapterOk !== null) return adapterOk;
+  if (!hasWebGPU()) return (adapterOk = false);
+  try { adapterOk = Boolean(await navigator.gpu.requestAdapter()); } catch { adapterOk = false; }
+  return adapterOk;
+}
+
 /* ───────── text model ───────── */
 
 let engine = null, engineModel = null, engineLoading = null;
@@ -80,12 +90,13 @@ export async function localTranscriber(model, onProgress = () => {}) {
     const progress_callback = (p) => { if (p.status === "progress") onProgress(`Loading Whisper… ${p.file || ""}`, Math.round(p.progress || 0)); };
     const onGPU = { device: "webgpu", dtype: { encoder_model: "fp32", decoder_model_merged: "q4" }, progress_callback };
     const onCPU = { device: "wasm", dtype: "q8", progress_callback };
-    /* navigator.gpu can exist while no adapter is actually available (headless browsers, blocklisted drivers),
-       and that only fails once the backend is created. So the CPU build is a fallback, not just an else branch. */
+    /* Ask for the adapter before choosing, so a machine without one downloads the CPU build only.
+       The backend can still fail after that, so the CPU build stays a fallback as well as an else branch. */
+    const gpu = await webgpuUsable();
     try {
-      transcriber = await pipeline("automatic-speech-recognition", model, hasWebGPU() ? onGPU : onCPU);
+      transcriber = await pipeline("automatic-speech-recognition", model, gpu ? onGPU : onCPU);
     } catch (e) {
-      if (!hasWebGPU()) throw e;
+      if (!gpu) throw e;
       onProgress("No usable GPU — loading Whisper for the processor instead…", 0);
       transcriber = await pipeline("automatic-speech-recognition", model, onCPU);
     }
@@ -127,9 +138,12 @@ export async function detectLanguage(t, pcm) {
 export async function localTranscribe(model, blob, onProgress) {
   const t = await localTranscriber(model, onProgress);
   const pcm = await blobToPCM(blob);
-  /* Detection is a bonus: if it fails, transcribe anyway rather than losing the recording. */
+  /* Detection is a bonus: if it fails, transcribe anyway rather than losing the recording.
+     Both steps report progress, because on a processor they take long enough to look frozen otherwise. */
   let language = null;
+  onProgress?.("Working out which language you spoke…", 0);
   try { language = await detectLanguage(t, pcm); } catch { language = null; }
+  onProgress?.("Transcribing…", 0);
   const long = pcm.length > 16000 * 30;
   const out = await t(pcm, { task: "transcribe", ...(language ? { language } : {}), ...(long ? { chunk_length_s: 30, stride_length_s: 5 } : {}), return_timestamps: false });
   const text = (Array.isArray(out) ? out.map((o) => o.text).join(" ") : out.text || "").trim();

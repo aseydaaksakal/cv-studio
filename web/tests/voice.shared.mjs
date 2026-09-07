@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 export const clip = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 export const EDITED = { ops: [{ op: "set", path: "basics.title", value: "Kıdemli Mühendis" }, { op: "set", path: "summary", value: "Kısaltıldı." }], note: "Özet kısaltıldı, unvan güncellendi." };
+export const TRANSCRIBE_TIMEOUT = 480_000;
 export const fakeMic = (file) => ({ permissions: ["microphone"], launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", `--use-file-for-fake-audio-capture=${clip(file)}%noloop`] } });
 
 /** Real in-browser Whisper (base, downloaded from Hugging Face, CPU on CI); only the AI edit endpoint is mocked. */
@@ -21,6 +22,9 @@ export async function speakAndTranscribe(page) {
   await expect(page.locator("#mic-status")).toContainText("any language");
   await page.waitForTimeout(5500); // the fake microphone plays the whole clip once
   await page.click("#btn-mic");
-  await expect(page.locator("#mic-status")).toContainText("press Enter", { timeout: 300_000 });
+  /* The model is downloaded and then run on the processor, which is slow on a CI runner. Each phase reports
+     itself, so a timeout here names the phase it stalled in rather than leaving a stale download percentage. */
+  await expect(page.locator("#mic-status")).toContainText("Whisper", { timeout: 240_000 });
+  await expect(page.locator("#mic-status")).toContainText("press Enter", { timeout: TRANSCRIBE_TIMEOUT });
   return page.locator("#ask").inputValue();
 }

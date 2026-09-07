@@ -175,19 +175,35 @@ test("mic: record, auto-transcribe locally, transcript lands in the box, Enter a
   await expect(page.frameLocator("#frame").locator(".name")).toHaveText("Elif Demir-Yılmaz");
 });
 
-test("voice: a browser that reports WebGPU but has no usable adapter falls back to the processor", async ({ page, context }) => {
-  await context.grantPermissions(["microphone"]);
-  /* navigator.gpu is defined (see beforeEach) but creating the GPU backend throws, as it does in headless Chromium. */
-  await page.route(/cdn\.jsdelivr\.net\/npm\/@huggingface\/transformers/, (route) => route.fulfill({ status: 200, contentType: "text/javascript",
-    body: `export const env = {};
+/* A stub that records which backend each pipeline() asked for, and can be told to fail for one of them. */
+const RECORDING_TRANSFORMERS = (failOn) => `export const env = {};
 export async function pipeline(task, model, opts) {
-  if (opts?.device === "webgpu") throw new Error("no available backend found. ERR: [webgpu] Error: Failed to get GPU adapter.");
+  (window.__devices ??= []).push(opts?.device);
+  if (opts?.device === ${JSON.stringify(failOn)}) throw new Error("no available backend found. ERR: [webgpu] Error: Failed to get GPU adapter.");
   return async () => ({ text: " özeti kısalt lütfen " });
-}` }));
+}`;
+
+test("voice: no GPU adapter means the processor build is the only one downloaded", async ({ page, context }) => {
+  await context.grantPermissions(["microphone"]);
+  /* navigator.gpu exists (see beforeEach) but hands out no adapter — headless Chromium, and any blocklisted driver. */
+  await page.addInitScript(() => { Object.defineProperty(navigator, "gpu", { value: { requestAdapter: async () => null }, configurable: true }); });
+  await page.route(/cdn\.jsdelivr\.net\/npm\/@huggingface\/transformers/, (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: RECORDING_TRANSFORMERS("webgpu") }));
+  await page.goto("/"); await page.click("#btn-sample");
+  await page.click("#btn-mic"); await page.waitForTimeout(400); await page.click("#btn-mic");
+  await expect(page.locator("#ask")).toHaveValue("özeti kısalt lütfen");
+  expect(await page.evaluate(() => window.__devices)).toEqual(["wasm"]);
+});
+
+test("voice: an adapter that turns out unusable still falls back to the processor", async ({ page, context }) => {
+  await context.grantPermissions(["microphone"]);
+  /* The adapter is handed out, so WebGPU is tried, but creating the backend fails anyway. */
+  await page.addInitScript(() => { Object.defineProperty(navigator, "gpu", { value: { requestAdapter: async () => ({}) }, configurable: true }); });
+  await page.route(/cdn\.jsdelivr\.net\/npm\/@huggingface\/transformers/, (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: RECORDING_TRANSFORMERS("webgpu") }));
   await page.goto("/"); await page.click("#btn-sample");
   await page.click("#btn-mic"); await page.waitForTimeout(400); await page.click("#btn-mic");
   await expect(page.locator("#ask")).toHaveValue("özeti kısalt lütfen");
   await expect(page.locator("#mic-status")).toContainText("press Enter");
+  expect(await page.evaluate(() => window.__devices)).toEqual(["webgpu", "wasm"]);
 });
 
 test("a deleting instruction removes only what was named", async ({ page }) => {
