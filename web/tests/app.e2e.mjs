@@ -242,6 +242,8 @@ test("exports produce files", async ({ page }) => {
 });
 
 test("the model test button grades the selected model", async ({ page }) => {
+  // The probe asks for a specific change, so the stub must answer that, not the generic EDITED reply.
+  await stubModel(page, { ops: [{ op: "set", path: "basics.title", value: "Staff Engineer" }], note: "ok" });
   await page.goto("/");
   await page.click("#btn-settings-landing");
   await expect(page.locator("#localmodel option")).toHaveCount(8);
