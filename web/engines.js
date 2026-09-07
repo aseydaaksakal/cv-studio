@@ -105,8 +105,16 @@ export async function localChat(model, onProgress = () => {}) {
 }
 
 /** OpenAI-shaped completion on the local engine. Returns the text. */
+export class UnknownModelError extends Error {}
+
 export async function localComplete(model, system, user, onProgress) {
-  const e = await localChat(model, onProgress);
+  let e;
+  try { e = await localChat(model, onProgress); }
+  catch (err) {
+    if (/model record|model_list|not found/i.test(String(err.message)))
+      throw new UnknownModelError(`This browser cannot run "${model}".`);
+    throw err;
+  }
   const reply = await e.chat.completions.create({
     messages: [{ role: "system", content: system }, { role: "user", content: user }],
     temperature: 0, max_tokens: 4000,

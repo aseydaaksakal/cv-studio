@@ -35,6 +35,14 @@ async function stubModel(page, reply) {
     route.fulfill({ status: 200, contentType: "text/javascript", body: webllmModule(reply) }));
 }
 
+const webllmPicky = (badId, reply) =>
+  "export const prebuiltAppConfig = " + JSON.stringify(CATALOGUE) + ";"
+  + " export async function CreateMLCEngine(m, o) {"
+  + "   if (m === " + JSON.stringify(badId) + ") throw new Error('Cannot find model record in appConfig for ' + m);"
+  + "   o?.initProgressCallback?.({ text: 'stub', progress: 1 });"
+  + "   return { chat: { completions: { create: async () => ({ choices: [{ message: { content: "
+  + JSON.stringify(JSON.stringify(reply)) + " } }] }) } } }; }";
+
 const FAKE_TRANSFORMERS = `export const env = {}; export async function pipeline() { return async () => ({ text: " özeti kısalt lütfen " }); }`;
 
 test.beforeEach(async ({ page }) => {
@@ -327,4 +335,41 @@ test("choosing Other reveals a field for any MLC model id", async ({ page }) => 
   await expect(page.locator("#custommodel-row")).toBeHidden();
   await page.selectOption("#localmodel", "__custom__");
   await expect(page.locator("#custommodel-row")).toBeVisible();
+});
+
+test("a model id saved by an older version is repaired and the edit still lands", async ({ page }) => {
+  const stale = "Qwen2.5-32B-Instruct-q4f16_1-MLC";
+  await page.route(/esm\.run\/@mlc-ai\/web-llm/, (route) =>
+    route.fulfill({ status: 200, contentType: "text/javascript", body: webllmPicky(stale, EDITED) }));
+  await page.goto("/");
+  await page.evaluate((m) => localStorage.setItem("cvstudio.settings", JSON.stringify({ provider: "local", engine: "local", localmodel: m })), stale);
+  await page.reload();
+  await page.click("#btn-sample");
+  await page.fill("#ask", "unvanı staff yap");
+  await page.press("#ask", "Enter");
+  await expect(page.locator(".msg.assistant")).toContainText("is not available in this browser");
+  await expect(page.frameLocator("#frame").locator(".role")).toHaveText("Staff Backend Engineer");
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("cvstudio.settings")).localmodel);
+  expect(saved).not.toBe(stale);
+});
+
+test("repeated identical messages collapse into a counter", async ({ page }) => {
+  await stubModel(page, NOOP);
+  await openSample(page);
+  for (const _ of [1, 2, 3]) {
+    await page.fill("#ask", "hava nasıl");
+    await page.press("#ask", "Enter");
+    await expect(page.locator(".msg.user").last()).toHaveText(/hava nasıl/);
+  }
+  await expect(page.locator(".msg.assistant", { hasText: "Bunu anlayamadım." })).toHaveCount(1);
+  await expect(page.locator(".repeat").last()).toHaveText("×3");
+});
+
+test("the transcript says which engine produced it", async ({ page, context }) => {
+  await context.grantPermissions(["microphone"]);
+  await openSample(page);
+  await page.click("#btn-mic");
+  await page.waitForTimeout(400);
+  await page.click("#btn-mic");
+  await expect(page.locator("#mic-status")).toContainText("Heard via Whisper");
 });

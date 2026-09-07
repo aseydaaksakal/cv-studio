@@ -1,6 +1,6 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
 import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, applyOps, download, extractJSON, looksDestructive, normalize, plainText, renderATS, renderStyled, whisperLangName } from "./core.js";
-import { LOCAL_MODELS, LOCAL_WHISPER, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localWhisperId, ollamaModels, pickForBudget, probeModel } from "./engines.js";
+import { LOCAL_MODELS, LOCAL_WHISPER, UnknownModelError, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localWhisperId, ollamaModels, pickForBudget, probeModel } from "./engines.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
 
@@ -32,10 +32,23 @@ function showLanding() { $("#workspace").hidden = true; $("#landing").hidden = f
 /* ───────────────────────── chat ───────────────────────── */
 
 function say(role, text) {
+  const box = $("#messages");
+  const last = box.lastElementChild;
+  if (last && last.dataset.role === role && last.dataset.text === text) {
+    const n = Number(last.dataset.count || 1) + 1;
+    last.dataset.count = n;
+    last.querySelector(".repeat")?.remove();
+    const badge = document.createElement("span");
+    badge.className = "repeat"; badge.textContent = ` ×${n}`;
+    last.appendChild(badge);
+    last.scrollIntoView({ block: "end" });
+    return;
+  }
   const el = document.createElement("div");
   el.className = "msg " + role;
+  el.dataset.role = role; el.dataset.text = text;
   el.innerHTML = esc(text).replace(/\n/g, "<br>");
-  $("#messages").appendChild(el);
+  box.appendChild(el);
   el.scrollIntoView({ block: "end" });
 }
 
@@ -45,7 +58,21 @@ const haveKey = () => Boolean(settings.apikey);
 const defaultModel = () => (settings.provider === "openai" ? "gpt-4o-mini" : "claude-sonnet-5");
 
 async function callModel(system, user) {
-  if (settings.provider === "local") return localComplete(settings.localmodel === "__custom__" ? settings.custommodel : settings.localmodel, system, user, progress);
+  if (settings.provider === "local") {
+    const chosen = settings.localmodel === "__custom__" ? settings.custommodel : settings.localmodel;
+    try { return await localComplete(chosen, system, user, progress); }
+    catch (e) {
+      if (!(e instanceof UnknownModelError)) throw e;
+      // A model id saved by an older version, or one this build no longer offers:
+      // repair the setting from the live catalogue and try once more.
+      const models = await availableLocalModels();
+      const fallback = pickForBudget(models, 8) || models[0][0];
+      if (!fallback || fallback === chosen) throw new Error(`${e.message} Open ⚙ and pick another model.`);
+      settings.localmodel = fallback; settings.custommodel = ""; saveSettings(); fillModels(models);
+      say("assistant", `"${chosen}" is not available in this browser, so I switched to ${fallback} and retried.`);
+      return localComplete(fallback, system, user, progress);
+    }
+  }
   if (settings.provider === "ollama") {
     const base = (settings.ollamaurl || "http://localhost:11434").replace(/\/$/, "");
     let r;
@@ -197,8 +224,9 @@ async function startRecording(transcribe) {
     try {
       const { text, language } = await transcribe(new Blob(chunks, { type: recorder.mimeType }));
       $("#ask").value = text;
-      const heard = language ? `Heard ${whisperLangName(language)} · ` : "";
-      micStatus(text ? `${heard}Check the text, then press Enter.` : "Heard nothing — try again closer to the mic.");
+      const via = settings.engine === "browser" ? "browser recognition" : settings.engine === "whisper" ? "Whisper API" : settings.engine === "desktop" ? "desktop backend" : `Whisper ${String(settings.localwhisper).split("/").pop()}`;
+      const heard = language ? `${whisperLangName(language)} via ${via}` : `via ${via}`;
+      micStatus(text ? `Heard ${heard} — check the text, then press Enter.` : `Heard nothing ${heard} — try again closer to the mic.`);
     } catch (e) { micStatus(String(e.message || e)); }
     status(""); $("#ask").focus();
   };
