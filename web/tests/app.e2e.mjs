@@ -136,7 +136,7 @@ test("an instruction the model cannot act on leaves the CV alone", async ({ page
   await openSample(page);
   await page.fill("#ask", "hava nasıl");
   await page.press("#ask", "Enter");
-  await expect(page.locator(".msg.error")).toContainText("Nothing changed");
+  await expect(page.locator(".msg.assistant").last()).toHaveText("Bunu anlayamadım.");
   const frame = page.frameLocator("#frame");
   await expect(frame.locator(".name")).toHaveText("Elif Demir");
   await expect(frame.locator(".role")).toHaveText("Senior Backend Engineer");

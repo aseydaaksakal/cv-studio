@@ -95,6 +95,7 @@ async function editWithAI(instruction) {
     let next, detail = "";
     if (Array.isArray(out.ops)) {
       const r = applyOps(state.cv, out.ops); next = r.cv;
+      if (r.applied === 0 && !r.skipped.length && out.note) { thinking.remove(); say("assistant", out.note); return; }
       if (r.applied === 0) {
         thinking.remove();
         say("error", r.skipped.length
