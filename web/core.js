@@ -134,6 +134,36 @@ Paths: basics.name, basics.title, basics.location, basics.phone, basics.email, b
 Rules: emit the fewest operations that fulfil the instruction; never invent employers, dates, numbers or credentials; keep the CV's language unless asked to translate; when translating, set each text field with its translation; when asked to shorten, delete the weakest bullets or shorten the summary. If the instruction is unclear or not about the CV, reply {"ops":[],"note":"<why>"}. No prose, no markdown fences.`;
 
 const LIST_KEYS = new Set(["links", "bullets", "items", "experience", "skills", "projects", "certifications", "education", "languages"]);
+const TOP_LEVEL = new Set(["basics", "summary", "experience", "skills", "projects", "certifications", "education", "languages"]);
+const BASICS = new Set(["name", "title", "location", "phone", "email", "links"]);
+const OP_ALIASES = { set: "set", update: "set", replace: "set", edit: "set", change: "set", write: "set",
+  delete: "delete", remove: "delete", clear: "delete", del: "delete",
+  append: "append", add: "append", push: "append", insert: "insert", move: "move", reorder: "move" };
+const FIELD_ALIASES = { fullname: "name", full_name: "name", headline: "title", role: "title", position: "title",
+  jobtitle: "title", job_title: "title", city: "location", address: "location", mail: "email", "e-mail": "email",
+  telephone: "phone", tel: "phone", mobile: "phone", website: "links", url: "links", profile: "summary",
+  about: "summary", objective: "summary", work: "experience", jobs: "experience", employment: "experience",
+  work_experience: "experience", workexperience: "experience", certs: "certifications", certificates: "certifications",
+  skill: "skills", project: "projects", language: "languages", schools: "education", degrees: "education" };
+
+/**
+ * Models write paths loosely: `name`, `cv.basics.name`, `experience[1].title`,
+ * `Work Experience.0`. Map those onto the real shape instead of skipping them,
+ * because a skipped operation looks to the user like the app ignored them.
+ */
+export function normalizePath(path) {
+  let p = String(path || "").trim()
+    .replace(/^\$\.?/, "").replace(/^(cv|resume)\./i, "")
+    .replace(/\[(\d+)\]/g, ".$1")
+    .replace(/\s+/g, "_");
+  if (!p) return "";
+  const parts = p.split(".").filter(Boolean).map((x) => {
+    const k = x.toLowerCase();
+    return /^\d+$/.test(x) ? x : (FIELD_ALIASES[k] || k);
+  });
+  if (parts.length && !TOP_LEVEL.has(parts[0]) && BASICS.has(parts[0])) parts.unshift("basics");
+  return parts.join(".");
+}
 
 function resolve(cv, path) {
   const parts = String(path).split(".");
@@ -151,10 +181,12 @@ function resolve(cv, path) {
 export function applyOps(cv, ops) {
   const next = structuredClone(cv);
   let applied = 0; const skipped = [];
-  for (const op of Array.isArray(ops) ? ops : []) {
+  const list = Array.isArray(ops) ? ops : (ops && typeof ops === "object" ? [ops] : []);
+  for (const raw of list) {
+    const op = { ...raw, op: OP_ALIASES[String(raw?.op || "").toLowerCase()] || raw?.op, path: normalizePath(raw?.path) };
     try {
-      const [parent, key] = resolve(next, op.path || "");
-      if (parent == null || key === "" || key == null) throw new Error("bad path");
+      const [parent, key] = resolve(next, op.path);
+      if (parent == null || key === "" || key == null) throw new Error(`no such field: ${raw?.path}`);
       if (op.op === "set") {
         if (LIST_KEYS.has(key) && !Array.isArray(op.value)) throw new Error(`${key} needs a list`);
         parent[key] = op.value;
@@ -176,7 +208,7 @@ export function applyOps(cv, ops) {
         const [item] = list.splice(from, 1); list.splice(to, 0, item);
       } else throw new Error(`unknown op ${op.op}`);
       applied++;
-    } catch (e) { skipped.push(`${JSON.stringify(op).slice(0, 80)} — ${e.message}`); }
+    } catch (e) { skipped.push(`${op.op || "?"} ${raw?.path || "?"} — ${e.message}`); }
   }
   return { cv: normalize(next), applied, skipped };
 }

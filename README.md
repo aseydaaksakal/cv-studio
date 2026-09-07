@@ -35,7 +35,13 @@ It runs entirely in your browser. There is no server and, by default, **no API k
    └────────────────────────────────────────────────────────────┘
 ```
 
-Speak or type an instruction. The model does not rewrite the CV; it emits **small operations** — `set basics.title`, `delete experience.1`, `append projects` — which the app applies itself. That is why *"delete the name Elif Demir"* removes the name and nothing else. If a reply would destroy most of the CV without you asking, it is refused and the CV stays as it was.
+Speak or type an instruction. The model does not rewrite the CV; it emits **small operations** — `set basics.title`, `delete experience.1`, `append projects` — which the app applies itself. That is why *"delete the name Elif Demir"* removes the name and nothing else.
+
+Three things protect you from a small model getting it wrong:
+
+- **Loose paths are repaired.** Models write `name`, `cv.basics.name`, `Full Name` or `experience[1].title`; all of those are mapped onto the real shape rather than silently ignored.
+- **Nothing is claimed that did not happen.** If no operation could be applied, you get an error naming what the model asked for — never a cheerful "done" over an unchanged CV.
+- **Destructive replies are refused.** A reply that would erase most of the CV is rejected unless you asked to clear it.
 
 **Voice.** Press the mic, speak in any language, press it again. There is no language picker: the spoken language is detected from the audio itself. Transformers.js does not run Whisper's detection step (it would default to English), so the app does it: the decoder is run one token past `<|startoftranscript|>` and the highest-scoring language token wins, then the clip is transcribed in that language. Mixed Turkish/English works. The detected language is shown next to the mic ("Heard Türkçe"), the transcript lands in the box, you glance at it and press Enter. Whisper uses WebGPU when the browser really has a usable adapter and falls back to the processor when it does not, so voice works on machines without a GPU.
 
@@ -45,10 +51,28 @@ Four options, in ⚙ settings. The first two are free and need no key.
 
 | Engine | Speed and quality | Setup |
 |---|---|---|
-| **In this browser** (default) | Depends on your GPU. Qwen 2.5 3B is fine for edits; 7B is better. Whisper small handles Turkish well. First use downloads ~250 MB + ~2 GB, then it is cached and offline. | none — needs Chrome/Edge with WebGPU |
-| **Ollama on your machine** | The best option if you already run Ollama. Your full GPU, your own model (`qwen3.8:27b`), no download in the browser. | one environment variable, below |
-| **CV Studio desktop backend** | Same, plus faster-whisper for speech. | run the backend, below |
+| **In this browser** (default) | Runs on your GPU through WebGPU. Model sizes from 1.5B to 32B; the default is Qwen 2.5 7B. First use downloads the weights, then they are cached and work offline. | none — Chrome/Edge with WebGPU |
+| **Ollama on your machine** | Any model you have pulled, at full GPU speed, with no download in the browser. Installed models are listed for you. | one environment variable, below |
+| **CV Studio desktop backend** | Same, plus faster-whisper for speech. Falls back to the in-browser engine if unreachable. | run the backend, below |
 | **Anthropic / OpenAI-compatible** | Best quality, costs money, needs your key. | paste a key |
+
+### Which model is good enough
+
+Two jobs with very different demands. **Editing** ("delete the name", "make the title Staff Engineer") is easy: the model only has to emit two or three operations. **Parsing** a full CV into JSON is hard: it has to keep every job, date and language.
+
+| Size | Editing | Parsing a full CV | Needs |
+|---|---|---|---|
+| under 3B | unreliable | loses sections | — |
+| **3B** | works | keeps the outline, drops detail | ~3 GB VRAM |
+| **7–8B** (default) | reliable | good | ~6 GB VRAM |
+| **larger, or Ollama with a 27B–32B model** | reliable | matches a cloud model | 10–20 GB VRAM |
+| cloud (Claude, GPT) | reliable | best | a key |
+
+The dropdown is **not a hardcoded list**: it is read from WebLLM's own catalogue when you open settings, so every entry is a model this browser can actually run, labelled with the memory it needs. The default is the largest one that fits in about 8 GB. Sizes above that are there if your GPU has the room.
+
+**Do not take our word for it.** ⚙ settings has a **Test this model** button. It sends one instruction whose correct answer is known and checks four things: the reply is JSON, it contains operations, they produce exactly the requested change, and nothing else was touched. You get *"Passed — correct in 2.4s"* or the specific reason it failed. Run it after changing models, or on a machine you have never tried.
+
+Any MLC-compiled model works: pick **Other** and paste its id (the [prebuilt list](https://github.com/mlc-ai/web-llm/blob/main/src/config.ts)). Any Ollama model works: type its tag, or pick from the list of what you have installed.
 
 ### Connect the hosted app to your own machine
 
@@ -108,9 +132,9 @@ The desktop edition keeps content generation out of the model entirely: the mode
 
 The web edition is tested at two levels, and CI runs both on every push:
 
-- **Unit** (`web/tests/core.test.mjs`, node:test): normalisation, JSON extraction, field editing, **the operation engine** (set/delete/append/insert/move, malformed operations skipped and reported), **the destructive-edit guard**, HTML escaping, every template, plain-text export.
+- **Unit** (`web/tests/core.test.mjs`, node:test): normalisation, JSON extraction, field editing, **the model grader** (JSON, operations, exact result, no collateral change, unreachable model), **path repair** (`name` → `basics.name`, `experience[1].title`, aliases), **the operation engine** (set/delete/append/insert/move, malformed operations skipped and reported), **the destructive-edit guard**, HTML escaping, every template, plain-text export.
 - **Voice, end-to-end** (`web/tests/voice-en.e2e.mjs`, `web/tests/voice-tr.e2e.mjs`, Playwright): Chromium is started with a fake microphone that plays a synthesised WAV (`web/tests/fixtures/`, one English and one Turkish instruction made with espeak-ng), the default Whisper model is downloaded and run in the page on CPU, the language must be detected correctly ("Heard English", "Heard Türkçe"), the transcript must land in the composer, and Enter must send it to the mocked model and update the preview.
-- **End-to-end** (`web/tests/app.e2e.mjs`, Playwright, real Chromium with a fake microphone): landing → sample → workspace; template switching; keyless in-browser engine editing (model stubbed at the module boundary); cloud engine without a key; cloud engine against a mocked endpoint with the change note and Undo; a targeted delete removing only what was named; a wiping reply being refused; an instruction the model cannot act on; the toolbar upload; the left/right layout; quick actions; **mic → recording → local transcription → Enter → edit applied**; Fields editing; persistence; New CV; exports; dropping a saved JSON.
+- **End-to-end** (`web/tests/app.e2e.mjs`, Playwright, real Chromium with a fake microphone): landing → sample → workspace; template switching; keyless in-browser engine editing (model stubbed at the module boundary); cloud engine without a key; cloud engine against a mocked endpoint with the change note and Undo; a targeted delete removing only what was named; a wiping reply being refused; an instruction the model cannot act on; the toolbar upload; the left/right layout;, the WebGPU adapter probe and its processor fallback; the model test button passing and failing; the custom model field; quick actions; **mic → recording → local transcription → Enter → edit applied**; Fields editing; persistence; New CV; exports; dropping a saved JSON.
 
 What automation cannot cover and is checked by hand on each release: WebGPU on actual hardware, transcription accuracy on a real microphone and voice, the print-to-PDF dialog, real PDF/DOCX parsing on a handful of layouts.
 

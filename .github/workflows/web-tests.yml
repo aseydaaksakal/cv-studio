@@ -27,7 +27,17 @@ jobs:
         with: { node-version: "20" }
       - run: npm install --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
-      - run: npx playwright test
+      - run: npx playwright test --reporter=list
       - uses: actions/upload-artifact@v5
         if: failure()
         with: { name: playwright-report, path: web/test-results }
+      - name: Failure summary
+        if: failure()
+        run: |
+          echo "### Playwright failures" >> $GITHUB_STEP_SUMMARY
+          find test-results -name "*.md" -o -name "error-context.md" | head -20 | while read f; do
+            echo "<details><summary>$f</summary>" >> $GITHUB_STEP_SUMMARY
+            head -60 "$f" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+          done
+          ls -R test-results | head -60 >> $GITHUB_STEP_SUMMARY

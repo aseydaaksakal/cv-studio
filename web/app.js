@@ -1,6 +1,6 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
 import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, applyOps, download, extractJSON, looksDestructive, normalize, plainText, renderATS, renderStyled, whisperLangName } from "./core.js";
-import { LOCAL_MODELS, LOCAL_WHISPER, hasWebGPU, localComplete, localTranscribe, localWhisperId } from "./engines.js";
+import { LOCAL_MODELS, LOCAL_WHISPER, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localWhisperId, ollamaModels, pickForBudget, probeModel } from "./engines.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
 
@@ -9,7 +9,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dis
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const state = { cv: EMPTY(), history: [], photo: null, busy: false };
-const settings = Object.assign({ provider: "local", engine: "local", localmodel: LOCAL_MODELS[1][0], localwhisper: LOCAL_WHISPER[1][0], ollamaurl: "http://localhost:11434", ollamamodel: "qwen3.8:27b", desktopurl: "http://localhost:8000" }, JSON.parse(localStorage.getItem("cvstudio.settings") || "{}"));
+const settings = Object.assign({ provider: "local", engine: "local", localmodel: LOCAL_MODELS[3][0], custommodel: "", localwhisper: LOCAL_WHISPER[1][0], ollamaurl: "http://localhost:11434", ollamamodel: "qwen3.8:27b", desktopurl: "http://localhost:8000" }, JSON.parse(localStorage.getItem("cvstudio.settings") || "{}"));
 const saveSettings = () => localStorage.setItem("cvstudio.settings", JSON.stringify(settings));
 const progress = (msg, pct) => status(pct ? `${msg} ${pct}%` : msg);
 
@@ -45,7 +45,7 @@ const haveKey = () => Boolean(settings.apikey);
 const defaultModel = () => (settings.provider === "openai" ? "gpt-4o-mini" : "claude-sonnet-5");
 
 async function callModel(system, user) {
-  if (settings.provider === "local") return localComplete(settings.localmodel, system, user, progress);
+  if (settings.provider === "local") return localComplete(settings.localmodel === "__custom__" ? settings.custommodel : settings.localmodel, system, user, progress);
   if (settings.provider === "ollama") {
     const base = (settings.ollamaurl || "http://localhost:11434").replace(/\/$/, "");
     let r;
@@ -80,7 +80,9 @@ async function parseWithAI(text) {
   status("Structuring with AI…");
   const cv = extractJSON(await callModel(SYSTEM_PARSE, text.slice(0, 40000)));
   setCV(cv, { record: false }); showWorkspace(); status("");
-  say("assistant", `Loaded ${cv.basics?.name || "your CV"}. Tell me what to change — type it or press the mic. The Fields tab lets you edit anything by hand.`);
+  const thin = ["experience", "education", "languages"].filter((k) => (state.cv[k] || []).length < 2);
+  say("assistant", `Loaded ${state.cv.basics?.name || "your CV"}. Tell me what to change — type it or press the mic.`
+    + (thin.length ? ` A small local model can drop detail: check ${thin.join(", ")} in the Fields tab, or pick a larger model in ⚙.` : " The Fields tab lets you edit anything by hand."));
 }
 
 async function editWithAI(instruction) {
@@ -93,8 +95,15 @@ async function editWithAI(instruction) {
     let next, detail = "";
     if (Array.isArray(out.ops)) {
       const r = applyOps(state.cv, out.ops); next = r.cv;
-      if (r.applied === 0) { thinking.remove(); say("assistant", out.note || "I did not find anything to change for that. Try saying it differently."); return; }
-      if (r.skipped.length) detail = ` (${r.skipped.length} step(s) could not be applied)`;
+      if (r.applied === 0 && !r.skipped.length && out.note) { thinking.remove(); say("assistant", out.note); return; }
+      if (r.applied === 0) {
+        thinking.remove();
+        say("error", r.skipped.length
+          ? `Nothing changed — the model asked for something the CV has no place for:\n${r.skipped.join("\n")}`
+          : "Nothing changed. Say it more concretely, e.g. \"adı sil\", \"unvanı Staff Engineer yap\", \"ikinci işi kaldır\".");
+        return;
+      }
+      if (r.skipped.length) detail = `\n(${r.skipped.length} step skipped: ${r.skipped[0]})`;
     } else if (out.cv && typeof out.cv === "object") next = normalize(out.cv);
     else throw new Error("The model did not return operations.");
     if (looksDestructive(state.cv, next, instruction)) { thinking.remove(); say("error", "That would have wiped most of the CV, so I did not apply it. If you really want to clear it, say \"hepsini sil\" / \"clear everything\"."); return; }
@@ -150,7 +159,16 @@ function toggleMic() {
   if (listening) { if (recognizer) recognizer.stop(); if (recorder && recorder.state === "recording") recorder.stop(); return; }
   if (settings.engine === "browser") return startBrowser();
   const engines = { whisper: transcribeWithAPI, desktop: transcribeWithDesktop, local: transcribeLocally };
-  return startRecording(engines[settings.engine] || transcribeLocally);
+  const chosen = engines[settings.engine] || transcribeLocally;
+  const withFallback = async (blob) => {
+    if (chosen === transcribeLocally) return transcribeLocally(blob);
+    try { return await chosen(blob); }
+    catch (e) {
+      micStatus(`${e.message} Falling back to in-browser Whisper…`);
+      return transcribeLocally(blob);
+    }
+  };
+  return startRecording(withFallback);
 }
 
 /* Browser recogniser: instant, but it only knows the browser's language. Kept as the lightweight option. */
@@ -300,26 +318,63 @@ $("#btn-txt").onclick = () => download(fileBase() + ".txt", plainText(state.cv))
 $("#btn-new").onclick = () => { if (confirm("Start over? This clears the CV and photo from this browser.")) { state.photo = null; $("#photo-toggle").checked = false; state.history = []; state.cv = EMPTY(); localStorage.removeItem("cvstudio.cv"); localStorage.removeItem("cvstudio.photo"); $("#messages").innerHTML = ""; renderForm(); renderPreview(); showLanding(); status(""); } };
 
 const dlg = $("#settings");
-for (const [v, label] of LOCAL_MODELS) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#localmodel").appendChild(o); }
+function fillModels(models) {
+  $("#localmodel").innerHTML = "";
+  for (const [v, label] of models) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#localmodel").appendChild(o); }
+  const wanted = models.some(([v]) => v === settings.localmodel) ? settings.localmodel
+    : (pickForBudget(models, 8) || models[0][0]);
+  $("#localmodel").value = wanted; settings.localmodel = wanted; saveSettings();
+}
+fillModels(LOCAL_MODELS);
+let modelsLoaded = false;
+async function loadRealModelList() {
+  if (modelsLoaded) return; modelsLoaded = true;
+  $("#gpu-note").textContent = "Reading the model catalogue…";
+  fillModels(await availableLocalModels());
+  syncSettingsForm();
+}
 for (const [v, label] of LOCAL_WHISPER) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#localwhisper").appendChild(o); }
 function syncSettingsForm() {
   const p = $("#provider").value, e = $("#engine").value;
   $("#localmodel-row").hidden = p !== "local"; $("#apikey-row").hidden = !(p === "anthropic" || p === "openai"); $("#model-row").hidden = !(p === "anthropic" || p === "openai"); $("#baseurl-row").hidden = p !== "openai";
   $("#ollama-row").hidden = p !== "ollama"; $("#ollamamodel-row").hidden = p !== "ollama";
+  $("#custommodel-row").hidden = !(p === "local" && $("#localmodel").value === "__custom__");
+  if (p === "ollama") ollamaModels($("#ollamaurl").value || "http://localhost:11434").then((names) => {
+    $("#ollama-installed").innerHTML = names.map((n) => `<option value="${n}">`).join("");
+    $("#gpu-note").textContent = names.length ? `Ollama reachable — installed: ${names.slice(0, 6).join(", ")}${names.length > 6 ? "…" : ""}` : "Ollama not reachable yet — check the URL and OLLAMA_ORIGINS (see README).";
+  });
   $("#localwhisper-row").hidden = e !== "local"; $("#sttkey-row").hidden = e !== "whisper"; $("#desktopurl-row").hidden = e !== "desktop";
   $("#model").placeholder = p === "openai" ? "gpt-4o-mini" : "claude-sonnet-5";
-  $("#gpu-note").textContent = hasWebGPU() ? "WebGPU available: in-browser models will use your GPU." : "No WebGPU in this browser: in-browser text models will not run; Whisper falls back to CPU. Chrome or Edge 113+ recommended.";
+  if (p === "local") $("#gpu-note").textContent = hasWebGPU()
+    ? "WebGPU available. Only models this browser can actually run are listed — press Test this model to confirm yours works."
+    : "No WebGPU in this browser: in-browser text models will not run. Chrome or Edge 113+ recommended.";
+  else $("#gpu-note").textContent = hasWebGPU() ? "WebGPU available: in-browser models will use your GPU." : "No WebGPU in this browser: in-browser text models will not run; Whisper falls back to CPU. Chrome or Edge 113+ recommended.";
 }
 const openSettings = () => {
-  $("#provider").value = settings.provider; $("#localmodel").value = settings.localmodel; $("#apikey").value = settings.apikey || ""; $("#model").value = settings.model || ""; $("#baseurl").value = settings.baseurl || "";
+  $("#provider").value = settings.provider; $("#localmodel").value = settings.localmodel; $("#custommodel").value = settings.custommodel || ""; $("#apikey").value = settings.apikey || ""; $("#model").value = settings.model || ""; $("#baseurl").value = settings.baseurl || "";
   $("#engine").value = settings.engine; $("#localwhisper").value = settings.localwhisper; $("#sttkey").value = settings.sttkey || "";
   $("#ollamaurl").value = settings.ollamaurl; $("#ollamamodel").value = settings.ollamamodel; $("#desktopurl").value = settings.desktopurl;
-  syncSettingsForm(); dlg.showModal();
+  syncSettingsForm(); dlg.showModal(); loadRealModelList();
 };
 $("#btn-settings").onclick = openSettings; $("#btn-settings-landing").onclick = openSettings;
 $("#provider").onchange = syncSettingsForm; $("#engine").onchange = syncSettingsForm;
+$("#localmodel").onchange = syncSettingsForm; $("#ollamaurl").onchange = syncSettingsForm;
+$("#btn-test-model").onclick = async () => {
+  const btn = $("#btn-test-model"), out = $("#test-result");
+  btn.disabled = true; out.className = "muted small"; out.textContent = "Loading the model and sending one instruction…";
+  const saved = { ...settings };
+  Object.assign(settings, { provider: $("#provider").value, localmodel: $("#localmodel").value, custommodel: $("#custommodel").value.trim(), custommodel: $("#custommodel").value.trim(),
+    apikey: $("#apikey").value.trim(), model: $("#model").value.trim(), baseurl: $("#baseurl").value.trim(),
+    ollamaurl: $("#ollamaurl").value.trim() || "http://localhost:11434", ollamamodel: $("#ollamamodel").value.trim() || "qwen3.8:27b" });
+  try {
+    const r = await probeModel((sys, user) => callModel(sys, user), SYSTEM_EDIT, applyOps);
+    out.className = "small " + (r.ok ? "ok" : "err");
+    out.textContent = (r.ok ? "Passed — " : "Failed — ") + r.detail;
+  } catch (e) { out.className = "small err"; out.textContent = String(e.message || e); }
+  finally { Object.assign(settings, saved); btn.disabled = false; }
+};
 $("#btn-save-settings").onclick = () => {
-  Object.assign(settings, { provider: $("#provider").value, localmodel: $("#localmodel").value, apikey: $("#apikey").value.trim(), model: $("#model").value.trim(), baseurl: $("#baseurl").value.trim(), engine: $("#engine").value, localwhisper: $("#localwhisper").value, sttkey: $("#sttkey").value.trim(), ollamaurl: $("#ollamaurl").value.trim() || "http://localhost:11434", ollamamodel: $("#ollamamodel").value.trim() || "qwen3.8:27b", desktopurl: $("#desktopurl").value.trim() || "http://localhost:8000" });
+  Object.assign(settings, { provider: $("#provider").value, localmodel: $("#localmodel").value, custommodel: $("#custommodel").value.trim(), apikey: $("#apikey").value.trim(), model: $("#model").value.trim(), baseurl: $("#baseurl").value.trim(), engine: $("#engine").value, localwhisper: $("#localwhisper").value, sttkey: $("#sttkey").value.trim(), ollamaurl: $("#ollamaurl").value.trim() || "http://localhost:11434", ollamamodel: $("#ollamamodel").value.trim() || "qwen3.8:27b", desktopurl: $("#desktopurl").value.trim() || "http://localhost:8000" });
   saveSettings();
 };
 

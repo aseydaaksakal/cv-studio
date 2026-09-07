@@ -118,6 +118,94 @@ test("looksDestructive catches a wiped CV unless the user asked for it", async (
   assert.equal(looksDestructive(before, { ...before, summary: "" }, "özeti sil"), false);
 });
 
+test("normalizePath accepts the shapes models actually write", async () => {
+  const { normalizePath } = await import("../core.js");
+  assert.equal(normalizePath("name"), "basics.name");
+  assert.equal(normalizePath("Full Name"), "basics.name");
+  assert.equal(normalizePath("cv.basics.email"), "basics.email");
+  assert.equal(normalizePath("$.summary"), "summary");
+  assert.equal(normalizePath("experience[1].title"), "experience.1.title");
+  assert.equal(normalizePath("Work Experience.0"), "experience.0");
+  assert.equal(normalizePath("certs.2.year"), "certifications.2.year");
+  assert.equal(normalizePath("basics.name"), "basics.name");
+});
+
+test("applyOps tolerates loose paths and op names from the model", async () => {
+  const { applyOps } = await import("../core.js");
+  const { cv, applied, skipped } = applyOps(normalize(SAMPLE), [
+    { op: "remove", path: "name" },
+    { op: "update", path: "Job Title", value: "Staff Engineer" },
+    { op: "add", path: "Projects", value: { name: "x", description: "", link: "" } },
+  ]);
+  assert.deepEqual(skipped, []);
+  assert.equal(applied, 3);
+  assert.equal(cv.basics.name, "");
+  assert.equal(cv.basics.title, "Staff Engineer");
+  assert.equal(cv.projects.at(-1).name, "x");
+});
+
+test("a single operation object is accepted, and a truly bad path is reported", async () => {
+  const { applyOps } = await import("../core.js");
+  assert.equal(applyOps(normalize(SAMPLE), { op: "set", path: "summary", value: "s" }).applied, 1);
+  const bad = applyOps(normalize(SAMPLE), [{ op: "set", path: "hobbies.0", value: "x" }]);
+  assert.equal(bad.applied, 0);
+  assert.match(bad.skipped[0], /hobbies/);
+});
+
+test("probeModel grades a model on a known instruction", async () => {
+  const { probeModel, PROBE } = await import("../engines.js");
+  const { applyOps } = await import("../core.js");
+
+  const good = await probeModel(async () => JSON.stringify({ ops: [{ op: "set", path: "basics.title", value: "Staff Engineer" }], note: "ok" }), "sys", applyOps);
+  assert.equal(good.ok, true);
+  assert.match(good.detail, /good for editing/);
+
+  const loose = await probeModel(async () => 'Sure! ```json\n{"ops":[{"op":"update","path":"Job Title","value":"Staff Engineer"}]}\n```', "sys", applyOps);
+  assert.equal(loose.ok, true, "loose paths and fences still pass");
+
+  const prose = await probeModel(async () => "I have updated the title for you.", "sys", applyOps);
+  assert.equal(prose.ok, false);
+  assert.match(prose.detail, /not JSON/);
+
+  const empty = await probeModel(async () => JSON.stringify({ ops: [] }), "sys", applyOps);
+  assert.equal(empty.ok, false);
+
+  const wrong = await probeModel(async () => JSON.stringify({ ops: [{ op: "set", path: "basics.title", value: "Senior Engineer" }] }), "sys", applyOps);
+  assert.equal(wrong.ok, false);
+  assert.match(wrong.detail, /Senior Engineer/);
+
+  const collateral = await probeModel(async () => JSON.stringify({ ops: [
+    { op: "set", path: "basics.title", value: "Staff Engineer" }, { op: "set", path: "summary", value: "" }] }), "sys", applyOps);
+  assert.equal(collateral.ok, false);
+  assert.match(collateral.detail, /not asked to change/);
+
+  const dead = await probeModel(async () => { throw new Error("offline"); }, "sys", applyOps);
+  assert.equal(dead.ok, false);
+  assert.match(dead.detail, /could not be reached/);
+  assert.equal(PROBE.cv.basics.title, "Engineer", "the probe CV is not mutated");
+});
+
+test("pickForBudget picks the largest model that fits the VRAM budget", async () => {
+  const { pickForBudget } = await import("../engines.js");
+  const models = [
+    ["small", "Qwen 1.5B — ~1.2 GB VRAM"],
+    ["mid", "Qwen 7B — ~5.8 GB VRAM"],
+    ["big", "Qwen 32B — ~19.0 GB VRAM"],
+    ["__custom__", "Other — type an MLC model id"],
+  ];
+  assert.equal(pickForBudget(models, 8), "mid");
+  assert.equal(pickForBudget(models, 25), "big");
+  assert.equal(pickForBudget(models, 1), null);
+  assert.equal(pickForBudget([["__custom__", "Other"]], 8), null);
+});
+
+test("availableLocalModels falls back to the curated list when the catalogue is unreachable", async () => {
+  const { availableLocalModels, LOCAL_MODELS } = await import("../engines.js");
+  const models = await availableLocalModels();   // no network in the test runner
+  assert.deepEqual(models, LOCAL_MODELS);
+  assert.equal(models.at(-1)[0], "__custom__");
+});
+
 test("in-browser Whisper: language is the best-scoring language token, whatever the rest of the vocabulary says", async () => {
   const { pickLanguage, whisperLangName } = await import("../core.js");
   const langToId = { "<|en|>": 3, "<|tr|>": 5, "<|de|>": 7 };
