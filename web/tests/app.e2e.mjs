@@ -240,3 +240,29 @@ test("exports produce files", async ({ page }) => {
   const [txt] = await Promise.all([page.waitForEvent("download"), page.click("#btn-txt")]);
   expect(txt.suggestedFilename()).toBe("Elif_Demir.txt");
 });
+
+test("the model test button grades the selected model", async ({ page }) => {
+  await page.goto("/");
+  await page.click("#btn-settings-landing");
+  await expect(page.locator("#localmodel option")).toHaveCount(8);
+  await page.click("#btn-test-model");
+  await expect(page.locator("#test-result")).toContainText("Passed", { timeout: 15000 });
+});
+
+test("a model that replies with prose is reported as failing", async ({ page }) => {
+  await page.route(/esm\.run\/@mlc-ai\/web-llm/, (route) => route.fulfill({ status: 200, contentType: "text/javascript",
+    body: "export async function CreateMLCEngine(m,o){o?.initProgressCallback?.({text:'s',progress:1});return{chat:{completions:{create:async()=>({choices:[{message:{content:'I updated it for you.'}}]})}}};}" }));
+  await page.goto("/");
+  await page.click("#btn-settings-landing");
+  await page.click("#btn-test-model");
+  await expect(page.locator("#test-result")).toContainText("Failed", { timeout: 15000 });
+  await expect(page.locator("#test-result")).toContainText("not JSON");
+});
+
+test("choosing Other reveals a field for any MLC model id", async ({ page }) => {
+  await page.goto("/");
+  await page.click("#btn-settings-landing");
+  await expect(page.locator("#custommodel-row")).toBeHidden();
+  await page.selectOption("#localmodel", "__custom__");
+  await expect(page.locator("#custommodel-row")).toBeVisible();
+});

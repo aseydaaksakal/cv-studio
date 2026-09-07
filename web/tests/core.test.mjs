@@ -151,3 +151,36 @@ test("a single operation object is accepted, and a truly bad path is reported", 
   assert.equal(bad.applied, 0);
   assert.match(bad.skipped[0], /hobbies/);
 });
+
+test("probeModel grades a model on a known instruction", async () => {
+  const { probeModel, PROBE } = await import("../engines.js");
+  const { applyOps } = await import("../core.js");
+
+  const good = await probeModel(async () => JSON.stringify({ ops: [{ op: "set", path: "basics.title", value: "Staff Engineer" }], note: "ok" }), "sys", applyOps);
+  assert.equal(good.ok, true);
+  assert.match(good.detail, /good for editing/);
+
+  const loose = await probeModel(async () => 'Sure! ```json\n{"ops":[{"op":"update","path":"Job Title","value":"Staff Engineer"}]}\n```', "sys", applyOps);
+  assert.equal(loose.ok, true, "loose paths and fences still pass");
+
+  const prose = await probeModel(async () => "I have updated the title for you.", "sys", applyOps);
+  assert.equal(prose.ok, false);
+  assert.match(prose.detail, /not JSON/);
+
+  const empty = await probeModel(async () => JSON.stringify({ ops: [] }), "sys", applyOps);
+  assert.equal(empty.ok, false);
+
+  const wrong = await probeModel(async () => JSON.stringify({ ops: [{ op: "set", path: "basics.title", value: "Senior Engineer" }] }), "sys", applyOps);
+  assert.equal(wrong.ok, false);
+  assert.match(wrong.detail, /Senior Engineer/);
+
+  const collateral = await probeModel(async () => JSON.stringify({ ops: [
+    { op: "set", path: "basics.title", value: "Staff Engineer" }, { op: "set", path: "summary", value: "" }] }), "sys", applyOps);
+  assert.equal(collateral.ok, false);
+  assert.match(collateral.detail, /not asked to change/);
+
+  const dead = await probeModel(async () => { throw new Error("offline"); }, "sys", applyOps);
+  assert.equal(dead.ok, false);
+  assert.match(dead.detail, /could not be reached/);
+  assert.equal(PROBE.cv.basics.title, "Engineer", "the probe CV is not mutated");
+});

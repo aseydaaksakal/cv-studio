@@ -8,11 +8,16 @@
  * edition's local Ollama + faster-whisper.
  */
 
+/** Models compiled for WebGPU. Larger is better for parsing; see the README table. */
 export const LOCAL_MODELS = [
-  ["Qwen2.5-1.5B-Instruct-q4f16_1-MLC", "Qwen 2.5 1.5B — ~1 GB, works on most laptops"],
-  ["Qwen2.5-3B-Instruct-q4f16_1-MLC", "Qwen 2.5 3B — ~2 GB, better edits"],
-  ["Qwen2.5-7B-Instruct-q4f16_1-MLC", "Qwen 2.5 7B — ~4.5 GB, needs a strong GPU"],
-  ["Llama-3.2-3B-Instruct-q4f16_1-MLC", "Llama 3.2 3B — ~2 GB"],
+  ["Qwen2.5-1.5B-Instruct-q4f16_1-MLC", "Qwen 2.5 1.5B — ~1.1 GB · edits only, parsing loses detail"],
+  ["Qwen2.5-3B-Instruct-q4f16_1-MLC", "Qwen 2.5 3B — ~2.0 GB · minimum for reliable editing"],
+  ["Llama-3.2-3B-Instruct-q4f16_1-MLC", "Llama 3.2 3B — ~2.0 GB"],
+  ["Qwen2.5-7B-Instruct-q4f16_1-MLC", "Qwen 2.5 7B — ~4.5 GB · recommended, parses a full CV well"],
+  ["Llama-3.1-8B-Instruct-q4f16_1-MLC", "Llama 3.1 8B — ~5.0 GB"],
+  ["Qwen2.5-14B-Instruct-q4f16_1-MLC", "Qwen 2.5 14B — ~8.5 GB · needs ~10 GB VRAM"],
+  ["Qwen2.5-32B-Instruct-q4f16_1-MLC", "Qwen 2.5 32B — ~18 GB · needs ~20 GB VRAM (RTX 4090/5090)"],
+  ["__custom__", "Other — type an MLC model id"],
 ];
 export const LOCAL_WHISPER = [
   ["onnx-community/whisper-base", "Whisper base — ~80 MB, fast, weak on Turkish"],
@@ -101,4 +106,53 @@ export async function localTranscribe(model, blob, onProgress) {
   const pcm = await blobToPCM(blob);
   const out = await t(pcm, { task: "transcribe", chunk_length_s: 30, return_timestamps: false });
   return (Array.isArray(out) ? out.map((o) => o.text).join(" ") : out.text || "").trim();
+}
+
+
+/* ───────── model capability check ───────── */
+
+/** A fixed instruction whose correct answer we know, used to grade a model. */
+export const PROBE = {
+  cv: { basics: { name: "Ada Lovelace", title: "Engineer", location: "", phone: "", email: "", links: [] },
+        summary: "Builds things.", experience: [], skills: [], projects: [], certifications: [], education: [], languages: [] },
+  instruction: "Change the job title to Staff Engineer.",
+};
+
+/**
+ * Send the probe to a completion function and grade the reply.
+ * @returns {{ok: boolean, detail: string, ms: number, raw: string}}
+ */
+export async function probeModel(complete, system, applyOps) {
+  const started = performance.now();
+  let raw = "";
+  try {
+    raw = await complete(system, `CURRENT CV JSON:\n${JSON.stringify(PROBE.cv)}\n\nINSTRUCTION:\n${PROBE.instruction}`);
+  } catch (e) {
+    return { ok: false, detail: `The model could not be reached: ${e.message}`, ms: performance.now() - started, raw: "" };
+  }
+  const ms = Math.round(performance.now() - started);
+  let parsed;
+  try {
+    const a = raw.indexOf("{"), b = raw.lastIndexOf("}");
+    parsed = JSON.parse(raw.slice(a, b + 1));
+  } catch {
+    return { ok: false, detail: "Reply was not JSON. This model is too small or ignores the format — pick a larger one.", ms, raw };
+  }
+  const ops = Array.isArray(parsed.ops) ? parsed.ops : (parsed.ops ? [parsed.ops] : []);
+  if (!ops.length) return { ok: false, detail: "The model returned no operations. Pick a larger model.", ms, raw };
+  const { cv, applied } = applyOps(PROBE.cv, ops);
+  if (!applied) return { ok: false, detail: "The operations did not fit the CV shape. Pick a larger model.", ms, raw };
+  if (cv.basics.title !== "Staff Engineer") return { ok: false, detail: `It set the title to "${cv.basics.title}" instead of "Staff Engineer".`, ms, raw };
+  if (cv.basics.name !== "Ada Lovelace" || cv.summary !== "Builds things.")
+    return { ok: false, detail: "It changed fields it was not asked to change — unsafe for editing.", ms, raw };
+  return { ok: true, detail: `Correct in ${(ms / 1000).toFixed(1)}s. This model is good for editing.`, ms, raw };
+}
+
+/** Models installed in a local Ollama, or [] when it cannot be reached. */
+export async function ollamaModels(url) {
+  try {
+    const r = await fetch(url.replace(/\/$/, "") + "/api/tags");
+    if (!r.ok) return [];
+    return (await r.json()).models.map((m) => m.name).sort();
+  } catch { return []; }
 }

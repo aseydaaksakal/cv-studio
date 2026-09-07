@@ -103,11 +103,15 @@
       </select>
     </label>
     <label id="localmodel-row">Local model <select id="localmodel"></select></label>
+    <label id="custommodel-row" hidden>MLC model id <input type="text" id="custommodel" placeholder="e.g. Qwen2.5-Coder-7B-Instruct-q4f16_1-MLC"></label>
     <label id="apikey-row" hidden>API key <input type="password" id="apikey" placeholder="sk-…" autocomplete="off"></label>
     <label id="model-row" hidden>Model <input type="text" id="model" placeholder="claude-sonnet-5"></label>
     <label id="baseurl-row" hidden>Base URL <input type="text" id="baseurl" placeholder="https://api.openai.com/v1"></label>
     <label id="ollama-row" hidden>Ollama URL <input type="text" id="ollamaurl" placeholder="http://localhost:11434"></label>
-    <label id="ollamamodel-row" hidden>Ollama model <input type="text" id="ollamamodel" placeholder="qwen3.8:27b"></label>
+    <label id="ollamamodel-row" hidden>Ollama model
+      <input type="text" id="ollamamodel" list="ollama-installed" placeholder="qwen3.8:27b">
+      <datalist id="ollama-installed"></datalist>
+    </label>
     <label id="desktopurl-row" hidden>Desktop backend URL <input type="text" id="desktopurl" placeholder="http://localhost:8000"></label>
     <label>Voice engine
       <select id="engine">
@@ -120,6 +124,10 @@
     <label id="localwhisper-row">Local Whisper size <select id="localwhisper"></select></label>
     <label id="sttkey-row" hidden>OpenAI key for Whisper API <input type="password" id="sttkey" autocomplete="off"></label>
     <p class="muted small" id="gpu-note"></p>
+    <div class="row">
+      <button type="button" id="btn-test-model" class="ghost small">Test this model</button>
+      <span id="test-result" class="muted small"></span>
+    </div>
     <p class="muted">Keys are only needed for the cloud options: <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a> · <a href="https://platform.openai.com/" target="_blank" rel="noopener">platform.openai.com</a></p>
     <div class="row end">
       <button value="cancel" class="ghost">Cancel</button>
