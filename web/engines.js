@@ -15,8 +15,9 @@ export const LOCAL_MODELS = [
   ["Llama-3.2-3B-Instruct-q4f16_1-MLC", "Llama 3.2 3B — ~2 GB"],
 ];
 export const LOCAL_WHISPER = [
-  ["onnx-community/whisper-base", "Whisper base — ~80 MB, fast"],
-  ["onnx-community/whisper-small", "Whisper small — ~250 MB, more accurate"],
+  ["onnx-community/whisper-base", "Whisper base — ~80 MB, fast, weak on Turkish"],
+  ["onnx-community/whisper-small", "Whisper small — ~250 MB, good multilingual (default)"],
+  ["onnx-community/whisper-large-v3-turbo", "Whisper large-v3-turbo — ~800 MB, best accuracy, needs a GPU"],
 ];
 
 const WEBLLM_URL = "https://esm.run/@mlc-ai/web-llm@0.2.79";

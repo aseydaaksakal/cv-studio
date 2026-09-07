@@ -80,9 +80,9 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .landing-actions { display:flex; gap:.6rem; justify-content:center; margin-top:1.4rem; }
 
 /* ───── workspace ───── */
-.workspace { flex:1; display:grid; grid-template-columns:minmax(360px, 40%) 1fr; min-height:0; }
-@media (max-width: 960px) { .workspace { grid-template-columns:1fr; } .stage { min-height:60vh; } }
-.side { display:flex; flex-direction:column; min-height:0; border-right:1px solid var(--line); background:var(--panel); }
+.workspace { flex:1; display:grid; grid-template-columns:1fr minmax(320px, 34%); min-height:0; }
+@media (max-width: 960px) { .workspace { grid-template-columns:1fr; } .stage { min-height:70vh; } }
+.side { display:flex; flex-direction:column; min-height:0; border-left:1px solid var(--line); background:var(--panel); }
 .side-head { display:flex; align-items:center; gap:.8rem; padding:.55rem .9rem; border-bottom:1px solid var(--line); }
 .tabs { display:flex; gap:.25rem; margin-left:auto; }
 .tab { border:0; background:none; color:var(--muted); font-weight:600; padding:.35rem .6rem; border-radius:6px; }
@@ -100,11 +100,17 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .msg.error { align-self:flex-start; background:rgba(239,68,68,.1); border:1px solid var(--danger); color:var(--danger); }
 .msg.thinking { color:var(--muted); font-style:italic; }
 .side .chips { padding:0 1rem; }
-.composer { padding:.6rem 1rem .9rem; border-top:1px solid var(--line); }
+.composer { padding:.7rem .9rem .6rem; border-top:1px solid var(--line); background:var(--panel); }
+.box { position:relative; }
+.box textarea { margin:0; padding-right:5.6rem; min-height:3.4rem; }
+.icon.in-box { position:absolute; bottom:.45rem; width:2rem; height:2rem; }
+#btn-mic.in-box { right:2.9rem; }
+#btn-ask.in-box { right:.5rem; background:var(--accent); border-color:var(--accent); color:#fff; }
+.toolbar .brand { margin-right:.4rem; }
 .composer textarea { margin:0 0 .4rem; }
 .composer-row { display:flex; align-items:center; gap:.5rem; }
 .stage { display:flex; flex-direction:column; min-height:0; background:#3a3f4b; }
 @media (prefers-color-scheme: light) { .stage { background:#d9dce3; } }
-.stage-status { margin:0; padding:.3rem .9rem; background:var(--panel); border-top:1px solid var(--line); }
+.composer .status { margin:0; min-height:0; }
 
 select.mini { width:auto; margin:0; padding:.35rem .5rem; font-size:.8rem; max-width:11rem; }

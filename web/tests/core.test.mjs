@@ -73,3 +73,47 @@ test("plainText is a faithful, ordered dump", () => {
   assert.ok(txt.includes("Turkish / Native"));
 });
 
+
+test("applyOps: set, delete, append, insert, move on a copy", async () => {
+  const { applyOps } = await import("../core.js");
+  const cv = normalize(SAMPLE);
+  const { cv: out, applied, skipped } = applyOps(cv, [
+    { op: "set", path: "basics.title", value: "Staff Engineer" },
+    { op: "delete", path: "basics.name" },
+    { op: "delete", path: "experience.1" },
+    { op: "append", path: "projects", value: { name: "rag-eval", description: "d", link: "" } },
+    { op: "insert", path: "languages", index: 0, value: { name: "French", level: "A2" } },
+    { op: "move", path: "skills", from: 1, to: 0 },
+    { op: "delete", path: "experience.0.bullets.0" },
+  ]);
+  assert.equal(applied, 7); assert.deepEqual(skipped, []);
+  assert.equal(out.basics.title, "Staff Engineer");
+  assert.equal(out.basics.name, "");
+  assert.equal(out.experience.length, 1);
+  assert.equal(out.projects.at(-1).name, "rag-eval");
+  assert.equal(out.languages[0].name, "French");
+  assert.equal(out.skills[0].group, "Platform");
+  assert.equal(out.experience[0].bullets.length, 2);
+  assert.equal(cv.basics.title, "Senior Backend Engineer", "original untouched");
+});
+
+test("applyOps: bad ops are skipped and reported, good ones still apply", async () => {
+  const { applyOps } = await import("../core.js");
+  const { cv: out, applied, skipped } = applyOps(normalize(SAMPLE), [
+    { op: "delete", path: "experience.9" },
+    { op: "set", path: "skills", value: "not a list" },
+    { op: "teleport", path: "summary" },
+    { op: "set", path: "summary", value: "ok" },
+  ]);
+  assert.equal(applied, 1); assert.equal(skipped.length, 3);
+  assert.equal(out.summary, "ok");
+});
+
+test("looksDestructive catches a wiped CV unless the user asked for it", async () => {
+  const { looksDestructive } = await import("../core.js");
+  const before = normalize(SAMPLE);
+  const after = normalize({ basics: { name: "" } });
+  assert.equal(looksDestructive(before, after, "Elif Demir yazısını sil"), true);
+  assert.equal(looksDestructive(before, after, "hepsini sil"), false);
+  assert.equal(looksDestructive(before, { ...before, summary: "" }, "özeti sil"), false);
+});

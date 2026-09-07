@@ -85,7 +85,79 @@ export function extractJSON(text) {
 
 export const SYSTEM_PARSE = `You convert CV/résumé text into JSON. Reply with ONLY a JSON object matching this shape, no prose, no markdown fences:\n${SCHEMA_DOC}\nRules: keep the original language; keep every fact, date, number and name exactly; never invent anything; if a field is unknown use "" or []; put unlabelled contact lines into basics.links.`;
 
-export const SYSTEM_EDIT = `You edit a CV stored as JSON. You receive the current JSON and an instruction. Reply with ONLY a JSON object of the form {"cv": <the complete updated CV in the same shape>, "note": "<one short sentence saying what you changed, in the user's language>"} — no prose, no markdown fences. Rules: change only what the instruction requires; never invent employers, dates, metrics or credentials; keep the person's language unless told to translate; when asked to shorten, cut the weakest content first; keep order stable unless asked to reorder. The instruction may be a speech-to-text transcript in any language, possibly with recognition errors, mixed languages or missing punctuation: infer the intent and act on it. If the instruction is not about the CV, return the CV unchanged and explain in "note".`;
+export const SYSTEM_EDIT = `You edit a CV stored as JSON by emitting small operations. You receive the current CV JSON and an instruction (possibly a speech transcript in any language, possibly with recognition errors — infer the intent). Reply with ONLY a JSON object:
+{"ops": [ ... ], "note": "<one short sentence in the user's language saying what you changed>"}
+Allowed operations:
+  {"op":"set","path":"<dotted path>","value":<new value>}          e.g. {"op":"set","path":"basics.title","value":"Staff Engineer"}
+  {"op":"delete","path":"<dotted path>"}                             e.g. {"op":"delete","path":"experience.1"} or {"op":"delete","path":"basics.phone"}
+  {"op":"append","path":"<list path>","value":<item>}                e.g. {"op":"append","path":"projects","value":{"name":"rag-eval","description":"...","link":""}}
+  {"op":"insert","path":"<list path>","index":<n>,"value":<item>}
+  {"op":"move","path":"<list path>","from":<i>,"to":<j>}
+Paths: basics.name, basics.title, basics.location, basics.phone, basics.email, basics.links (list of strings), summary, experience (list of {title,company,location,start,end,bullets}), experience.0.bullets.2, skills (list of {group,items}), projects (list of {name,description,link}), certifications (list of {name,issuer,year}), education (list of {degree,school,year}), languages (list of {name,level}).
+Rules: emit the fewest operations that fulfil the instruction; never invent employers, dates, numbers or credentials; keep the CV's language unless asked to translate; when translating, set each text field with its translation; when asked to shorten, delete the weakest bullets or shorten the summary. If the instruction is unclear or not about the CV, reply {"ops":[],"note":"<why>"}. No prose, no markdown fences.`;
+
+const LIST_KEYS = new Set(["links", "bullets", "items", "experience", "skills", "projects", "certifications", "education", "languages"]);
+
+function resolve(cv, path) {
+  const parts = String(path).split(".");
+  let obj = cv;
+  for (let i = 0; i < parts.length - 1; i++) { if (obj == null) return [null, null]; obj = obj[parts[i]]; }
+  const last = parts[parts.length - 1];
+  return [obj, /^\d+$/.test(last) ? Number(last) : last];
+}
+
+/**
+ * Apply model-emitted operations to a copy of the CV. Unknown or malformed
+ * operations are skipped and reported, never applied half-way.
+ * @returns {{cv: object, applied: number, skipped: string[]}}
+ */
+export function applyOps(cv, ops) {
+  const next = structuredClone(cv);
+  let applied = 0; const skipped = [];
+  for (const op of Array.isArray(ops) ? ops : []) {
+    try {
+      const [parent, key] = resolve(next, op.path || "");
+      if (parent == null || key === "" || key == null) throw new Error("bad path");
+      if (op.op === "set") {
+        if (LIST_KEYS.has(key) && !Array.isArray(op.value)) throw new Error(`${key} needs a list`);
+        parent[key] = op.value;
+      } else if (op.op === "delete") {
+        if (Array.isArray(parent) && typeof key === "number") { if (key >= parent.length) throw new Error("index out of range"); parent.splice(key, 1); }
+        else if (Array.isArray(parent[key])) parent[key] = [];
+        else if (typeof parent[key] === "object" && parent[key] !== null) throw new Error("cannot delete an object; delete its fields");
+        else parent[key] = "";
+      } else if (op.op === "append" || op.op === "insert") {
+        const list = parent[key];
+        if (!Array.isArray(list)) throw new Error(`${key} is not a list`);
+        const at = op.op === "append" ? list.length : Math.max(0, Math.min(list.length, Number(op.index) || 0));
+        list.splice(at, 0, op.value);
+      } else if (op.op === "move") {
+        const list = parent[key];
+        if (!Array.isArray(list)) throw new Error(`${key} is not a list`);
+        const from = Number(op.from), to = Number(op.to);
+        if (!(from in list) || to < 0 || to >= list.length) throw new Error("bad move indices");
+        const [item] = list.splice(from, 1); list.splice(to, 0, item);
+      } else throw new Error(`unknown op ${op.op}`);
+      applied++;
+    } catch (e) { skipped.push(`${JSON.stringify(op).slice(0, 80)} — ${e.message}`); }
+  }
+  return { cv: normalize(next), applied, skipped };
+}
+
+/** Count how much content a CV holds, to catch a model that wiped it. */
+export function contentSize(cv) {
+  const c = normalize(cv);
+  return [c.basics.name, c.basics.title, c.summary].join("").length
+    + ["experience", "skills", "projects", "certifications", "education", "languages"].reduce((n, k) => n + JSON.stringify(c[k]).length, 0);
+}
+
+/** True when an edit destroyed most of the CV although the instruction did not ask to clear it. */
+export function looksDestructive(before, after, instruction) {
+  const b = contentSize(before), a = contentSize(after);
+  if (b < 200) return false;
+  const wipeWords = /\b(clear|delete everything|remove everything|start over|hepsini sil|tümünü sil|her şeyi sil|sıfırla|temizle)\b/i;
+  return a < b * 0.5 && !wipeWords.test(instruction || "");
+}
 
 /** Fill in a field by dotted path; list-ish fields are split from text. Mutates and returns cv. */
 export function applyField(cv, path, value) {

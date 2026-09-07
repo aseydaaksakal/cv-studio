@@ -29,45 +29,11 @@
 
 <!-- ───────── workspace: chat on the left, the CV on the right ───────── -->
 <main id="workspace" class="workspace" hidden>
-  <aside class="side">
-    <header class="side-head">
-      <div class="brand">CV Studio</div>
-      <nav class="tabs">
-        <button class="tab active" data-tab="chat">Chat</button>
-        <button class="tab" data-tab="fields">Fields</button>
-      </nav>
-      <button id="btn-settings" class="icon" title="AI settings">⚙</button>
-    </header>
-
-    <section id="tab-chat" class="tab-panel active">
-      <div id="messages" class="messages"></div>
-      <div class="chips">
-        <button data-q="Tighten the summary to three sentences that lead with impact.">Sharper summary</button>
-        <button data-q="Rewrite every experience bullet to start with a strong verb and include a measurable result where one exists. Do not invent numbers.">Stronger bullets</button>
-        <button data-q="Make this ATS-friendly: plain wording, standard section names, no tables or symbols in text.">ATS-friendly</button>
-        <button data-q="Cut content so it fits one A4 page without losing the strongest achievements.">Fit one page</button>
-        <button data-q="Translate the whole CV to English, keeping names and proper nouns.">English</button>
-        <button data-q="Translate the whole CV to Turkish, keeping names and proper nouns.">Türkçe</button>
-      </div>
-      <form id="composer" class="composer">
-        <textarea id="ask" rows="2" placeholder="Type what to change — or press the mic and say it. Enter sends, Shift+Enter is a new line."></textarea>
-        <div class="composer-row">
-          <button type="button" id="btn-mic" class="icon" title="Speak in any language">🎙</button>
-          <span id="mic-status" class="muted small"></span>
-          <span class="spacer"></span>
-          <button type="button" id="btn-undo" class="ghost small" disabled>Undo</button>
-          <button type="submit" id="btn-ask" class="primary small">Send</button>
-        </div>
-      </form>
-    </section>
-
-    <section id="tab-fields" class="tab-panel">
-      <div id="form"></div>
-    </section>
-  </aside>
-
+  <!-- left: the CV, with the message box under it -->
   <section class="stage">
     <div class="toolbar">
+      <div class="brand">CV Studio</div>
+      <button id="btn-upload" class="ghost small">Upload CV</button>
       <label>Template
         <select id="template">
           <option value="sans">Sans</option>
@@ -82,10 +48,45 @@
       <button id="btn-json" class="ghost small">Save JSON</button>
       <button id="btn-txt" class="ghost small">Plain text</button>
       <button id="btn-new" class="ghost small">New CV</button>
+      <button id="btn-settings" class="icon" title="Settings">⚙</button>
     </div>
     <iframe id="frame" title="CV preview"></iframe>
-    <p class="status stage-status" id="status"></p>
+    <form id="composer" class="composer">
+      <div class="box">
+        <textarea id="ask" rows="2" placeholder="Say or type what to change. Enter applies it."></textarea>
+        <button type="button" id="btn-mic" class="icon in-box" title="Speak in any language">🎙</button>
+        <button type="submit" id="btn-ask" class="icon in-box send" title="Apply (Enter)">↵</button>
+      </div>
+      <div class="composer-row">
+        <span id="mic-status" class="muted small"></span>
+        <span class="spacer"></span>
+        <span id="status" class="status small"></span>
+        <button type="button" id="btn-undo" class="ghost small" disabled>Undo</button>
+      </div>
+    </form>
   </section>
+
+  <!-- right: what changed, and the field editor -->
+  <aside class="side">
+    <header class="side-head">
+      <nav class="tabs">
+        <button class="tab active" data-tab="chat">Changes</button>
+        <button class="tab" data-tab="fields">Fields</button>
+      </nav>
+    </header>
+    <section id="tab-chat" class="tab-panel active">
+      <div id="messages" class="messages"></div>
+      <div class="chips">
+        <button data-q="Tighten the summary to three sentences that lead with impact.">Sharper summary</button>
+        <button data-q="Rewrite every experience bullet to start with a strong verb and include a measurable result where one exists. Do not invent numbers.">Stronger bullets</button>
+        <button data-q="Make this ATS-friendly: plain wording, standard section names, no tables or symbols in text.">ATS-friendly</button>
+        <button data-q="Cut content so it fits one A4 page without losing the strongest achievements.">Fit one page</button>
+        <button data-q="Translate the whole CV to English, keeping names and proper nouns.">English</button>
+        <button data-q="Translate the whole CV to Turkish, keeping names and proper nouns.">Türkçe</button>
+      </div>
+    </section>
+    <section id="tab-fields" class="tab-panel"><div id="form"></div></section>
+  </aside>
 </main>
 
 <!-- ───────── settings ───────── -->
@@ -95,7 +96,8 @@
     <p class="muted">Stored only in this browser. Sent only to the provider you pick. This site has no server.</p>
     <label>AI engine
       <select id="provider">
-        <option value="local">In your browser — free, no key, open-source model (WebGPU)</option>
+        <option value="local">In this browser — free, no key, open-source model (WebGPU)</option>
+        <option value="ollama">Ollama on my own machine or tunnel — free, no key, your GPU</option>
         <option value="anthropic">Anthropic (Claude) — your key</option>
         <option value="openai">OpenAI-compatible — your key</option>
       </select>
@@ -104,10 +106,14 @@
     <label id="apikey-row" hidden>API key <input type="password" id="apikey" placeholder="sk-…" autocomplete="off"></label>
     <label id="model-row" hidden>Model <input type="text" id="model" placeholder="claude-sonnet-5"></label>
     <label id="baseurl-row" hidden>Base URL <input type="text" id="baseurl" placeholder="https://api.openai.com/v1"></label>
+    <label id="ollama-row" hidden>Ollama URL <input type="text" id="ollamaurl" placeholder="http://localhost:11434"></label>
+    <label id="ollamamodel-row" hidden>Ollama model <input type="text" id="ollamamodel" placeholder="qwen3.8:27b"></label>
+    <label id="desktopurl-row" hidden>Desktop backend URL <input type="text" id="desktopurl" placeholder="http://localhost:8000"></label>
     <label>Voice engine
       <select id="engine">
-        <option value="local">In your browser — Whisper, detects the language, no key</option>
-        <option value="browser">Browser speech recognition — instant, uses your browser's language</option>
+        <option value="local">In this browser — Whisper, detects the language, no key</option>
+        <option value="desktop">CV Studio desktop backend on my machine or tunnel — faster-whisper</option>
+        <option value="browser">Browser speech recognition — instant, browser's language only</option>
         <option value="whisper">Whisper API (OpenAI) — your key</option>
       </select>
     </label>

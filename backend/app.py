@@ -23,6 +23,7 @@ import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
@@ -41,8 +42,14 @@ FRONT = ROOT / "frontend"
 
 NO_CACHE = {"Cache-Control": "no-store"}
 ACCESS_PASSWORD = os.environ.get("CV_STUDIO_ACCESS_PASSWORD", "")
+# Web surumunun (GitHub Pages) bu makinedeki modele baglanabilmesi icin.
+# Bos birakilirsa hicbir dis kaynak erisemez; virgulle birden fazla adres.
+CORS_ORIGINS = [o.strip() for o in os.environ.get("CV_STUDIO_CORS", "").split(",") if o.strip()]
 
 app = FastAPI(title="CV Studio")
+if CORS_ORIGINS:
+    app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS,
+                       allow_methods=["*"], allow_headers=["*"])
 app.include_router(voice_router)
 
 

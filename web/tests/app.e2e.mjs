@@ -1,7 +1,17 @@
 import { test, expect } from "@playwright/test";
 
 /** Canned AI reply: rename the person and explain. Proves the chat → AI → preview loop without a real key. */
-const EDITED = { cv: { basics: { name: "Elif Demir-Yılmaz", title: "Staff Backend Engineer" }, summary: "Edited by the fake model." }, note: "Renamed and retitled." };
+const EDITED = { ops: [
+  { op: "set", path: "basics.name", value: "Elif Demir-Yılmaz" },
+  { op: "set", path: "basics.title", value: "Staff Backend Engineer" },
+], note: "Renamed and retitled." };
+const WIPE = { ops: [
+  { op: "set", path: "basics.name", value: "" }, { op: "set", path: "summary", value: "" },
+  { op: "set", path: "experience", value: [] }, { op: "set", path: "skills", value: [] },
+  { op: "set", path: "projects", value: [] }, { op: "set", path: "certifications", value: [] },
+  { op: "set", path: "education", value: [] }, { op: "set", path: "languages", value: [] },
+], note: "Cleared." };
+const NOOP = { ops: [], note: "Bunu anlayamadım." };
 
 const FAKE_WEBLLM = `export async function CreateMLCEngine(model, opts) {
   opts?.initProgressCallback?.({ text: "stub load", progress: 1 });
@@ -25,6 +35,7 @@ test("landing is an empty page with a drop zone; sample opens the workspace", as
   await page.click("#btn-sample");
   await expect(page.locator("#workspace")).toBeVisible();
   await expect(page.locator(".msg.assistant").first()).toContainText("sample CV");
+  await expect(page.locator("#composer")).toBeVisible();
   const frame = page.frameLocator("#frame");
   await expect(frame.locator(".name")).toHaveText("Elif Demir");
 });
@@ -145,4 +156,53 @@ test("mic: record, auto-transcribe locally, transcript lands in the box, Enter a
   await page.press("#ask", "Enter");
   await expect(page.locator(".msg.user")).toHaveText("özeti kısalt lütfen");
   await expect(page.frameLocator("#frame").locator(".name")).toHaveText("Elif Demir-Yılmaz");
+});
+
+test("a deleting instruction removes only what was named", async ({ page }) => {
+  await page.route(/esm\.run\/@mlc-ai\/web-llm/, (route) => route.fulfill({ status: 200, contentType: "text/javascript",
+    body: `export async function CreateMLCEngine(m,o){o?.initProgressCallback?.({text:"s",progress:1});return{chat:{completions:{create:async()=>({choices:[{message:{content:${JSON.stringify(JSON.stringify({ ops: [{ op: "set", path: "basics.name", value: "" }], note: "Adı sildim." })} }}]})}}};}` }));
+  await page.goto("/"); await page.click("#btn-sample");
+  await page.fill("#ask", "Elif Demir yazısını sil"); await page.press("#ask", "Enter");
+  await expect(page.locator(".msg.assistant").last()).toHaveText("Adı sildim.");
+  const frame = page.frameLocator("#frame");
+  await expect(frame.locator(".name")).toHaveText("");
+  await expect(frame.locator("h2").first()).toHaveText("Summary");
+  await expect(frame.locator(".job").first()).toContainText("Kargo Labs");
+});
+
+test("an edit that would wipe the CV is refused", async ({ page }) => {
+  await page.route(/esm\.run\/@mlc-ai\/web-llm/, (route) => route.fulfill({ status: 200, contentType: "text/javascript",
+    body: `export async function CreateMLCEngine(m,o){o?.initProgressCallback?.({text:"s",progress:1});return{chat:{completions:{create:async()=>({choices:[{message:{content:${JSON.stringify(JSON.stringify(WIPE))} }}]})}}};}` }));
+  await page.goto("/"); await page.click("#btn-sample");
+  await page.fill("#ask", "Elif Demir yazısını sil"); await page.press("#ask", "Enter");
+  await expect(page.locator(".msg.error")).toContainText("wiped most of the CV");
+  await expect(page.frameLocator("#frame").locator(".name")).toHaveText("Elif Demir");
+});
+
+test("an instruction the model cannot act on leaves the CV alone and says so", async ({ page }) => {
+  await page.route(/esm\.run\/@mlc-ai\/web-llm/, (route) => route.fulfill({ status: 200, contentType: "text/javascript",
+    body: `export async function CreateMLCEngine(m,o){o?.initProgressCallback?.({text:"s",progress:1});return{chat:{completions:{create:async()=>({choices:[{message:{content:${JSON.stringify(JSON.stringify(NOOP))} }}]})}}};}` }));
+  await page.goto("/"); await page.click("#btn-sample");
+  await page.fill("#ask", "hava nasıl"); await page.press("#ask", "Enter");
+  await expect(page.locator(".msg.assistant").last()).toHaveText("Bunu anlayamadım.");
+  await expect(page.locator("#btn-undo")).toBeDisabled();
+  await expect(page.frameLocator("#frame").locator(".name")).toHaveText("Elif Demir");
+});
+
+test("the Upload button in the toolbar accepts another CV", async ({ page }) => {
+  await page.goto("/"); await page.click("#btn-sample");
+  await page.setInputFiles("#file", { name: "other.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ basics: { name: "Kemal Test", title: "QA Lead" } })) });
+  await expect(page.frameLocator("#frame").locator(".name")).toHaveText("Kemal Test");
+});
+
+test("layout: CV and composer on the left, changes panel on the right", async ({ page }) => {
+  await page.goto("/"); await page.click("#btn-sample");
+  const stage = await page.locator(".stage").boundingBox();
+  const side = await page.locator(".side").boundingBox();
+  const composer = await page.locator("#composer").boundingBox();
+  const frame = await page.locator("#frame").boundingBox();
+  expect(stage.x).toBeLessThan(side.x);
+  expect(composer.y).toBeGreaterThan(frame.y);
+  await expect(page.locator("#btn-mic")).toBeVisible();
+  await expect(page.locator("#btn-ask")).toBeVisible();
 });
