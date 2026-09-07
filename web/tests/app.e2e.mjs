@@ -140,8 +140,24 @@ test("settings default to the free in-browser engines and hide key fields", asyn
   await expect(page.locator("#engine")).toHaveValue("local");
   await expect(page.locator("#apikey-row")).toBeHidden();
   await expect(page.locator("#localmodel-row")).toBeVisible();
+  await expect(page.locator("#localwhisper")).toHaveValue("onnx-community/whisper-small");
+  await expect(page.locator("#localwhisper-row")).toBeVisible();
+  await expect(page.locator("#sttkey-row")).toBeHidden();
   await page.selectOption("#provider", "anthropic");
   await expect(page.locator("#apikey-row")).toBeVisible();
+  await page.selectOption("#engine", "whisper");
+  await expect(page.locator("#sttkey-row")).toBeVisible();
+  await expect(page.locator("#localwhisper-row")).toBeHidden();
+  await page.selectOption("#engine", "local"); await page.selectOption("#localwhisper", "onnx-community/whisper-base");
+  await page.click("#btn-save-settings");
+  expect(JSON.parse(await page.evaluate(() => localStorage.getItem("cvstudio.settings")))).toMatchObject({ engine: "local", localwhisper: "onnx-community/whisper-base" });
+});
+
+test("no language picker beside the mic: the engine detects the language itself", async ({ page }) => {
+  await page.goto("/"); await page.click("#btn-sample");
+  await expect(page.locator("#btn-mic")).toBeVisible();
+  await expect(page.locator("#composer select")).toHaveCount(0);
+  await expect(page.locator("#btn-mic")).toHaveAttribute("title", /any language/);
 });
 
 test("mic: record, auto-transcribe locally, transcript lands in the box, Enter applies it", async ({ page, context }) => {
@@ -153,6 +169,7 @@ test("mic: record, auto-transcribe locally, transcript lands in the box, Enter a
   await page.click("#btn-mic");
   await expect(page.locator("#ask")).toHaveValue("özeti kısalt lütfen");
   await expect(page.locator("#mic-status")).toContainText("press Enter");
+  await expect(page.locator("#mic-status")).not.toContainText("Heard"); // the stubbed model cannot tell the language
   await page.press("#ask", "Enter");
   await expect(page.locator(".msg.user")).toHaveText("özeti kısalt lütfen");
   await expect(page.frameLocator("#frame").locator(".name")).toHaveText("Elif Demir-Yılmaz");
@@ -160,7 +177,7 @@ test("mic: record, auto-transcribe locally, transcript lands in the box, Enter a
 
 test("a deleting instruction removes only what was named", async ({ page }) => {
   await page.route(/esm\.run\/@mlc-ai\/web-llm/, (route) => route.fulfill({ status: 200, contentType: "text/javascript",
-    body: `export async function CreateMLCEngine(m,o){o?.initProgressCallback?.({text:"s",progress:1});return{chat:{completions:{create:async()=>({choices:[{message:{content:${JSON.stringify(JSON.stringify({ ops: [{ op: "set", path: "basics.name", value: "" }], note: "Adı sildim." })} }}]})}}};}` }));
+    body: `export async function CreateMLCEngine(m,o){o?.initProgressCallback?.({text:"s",progress:1});return{chat:{completions:{create:async()=>({choices:[{message:{content:${JSON.stringify(JSON.stringify({ ops: [{ op: "set", path: "basics.name", value: "" }], note: "Adı sildim." }))} }}]})}}};}` }));
   await page.goto("/"); await page.click("#btn-sample");
   await page.fill("#ask", "Elif Demir yazısını sil"); await page.press("#ask", "Enter");
   await expect(page.locator(".msg.assistant").last()).toHaveText("Adı sildim.");

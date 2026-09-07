@@ -117,3 +117,34 @@ test("looksDestructive catches a wiped CV unless the user asked for it", async (
   assert.equal(looksDestructive(before, after, "hepsini sil"), false);
   assert.equal(looksDestructive(before, { ...before, summary: "" }, "özeti sil"), false);
 });
+
+test("in-browser Whisper: language is the best-scoring language token, whatever the rest of the vocabulary says", async () => {
+  const { pickLanguage, whisperLangName } = await import("../core.js");
+  const langToId = { "<|en|>": 3, "<|tr|>": 5, "<|de|>": 7 };
+  const logits = new Float32Array(10).fill(-1);
+  logits[0] = 99; /* a non-language token scoring highest must not win */
+  logits[3] = 2.5; logits[5] = 4.1; logits[7] = -Infinity;
+  assert.equal(pickLanguage(logits, langToId), "tr");
+  logits[3] = 8; assert.equal(pickLanguage(logits, langToId), "en");
+  assert.equal(pickLanguage(logits, {}), null);
+  assert.equal(pickLanguage(logits, undefined), null);
+  assert.equal(pickLanguage(logits, { "<|xx|>": 42 }), null); /* id outside the logits → ignored */
+  assert.equal(whisperLangName("tr"), "Türkçe"); assert.equal(whisperLangName("en"), "English"); assert.equal(whisperLangName("yo"), "yo");
+});
+
+test("audio helpers: stereo is averaged to mono, silence is detected", async () => {
+  const { peakLevel, toMono } = await import("../core.js");
+  const l = new Float32Array([0.2, -0.4]), r = new Float32Array([0.6, 0]);
+  assert.deepEqual(Array.from(toMono([l, r])).map((x) => +x.toFixed(3)), [0.4, -0.2]);
+  assert.equal(toMono([l]), l);
+  assert.equal(+peakLevel(toMono([l, r])).toFixed(3), 0.4);
+  assert.equal(peakLevel(new Float32Array(100)), 0);
+});
+
+test("local Whisper model ids: only the offered models, anything else falls back to small", async () => {
+  const { LOCAL_WHISPER, localWhisperId } = await import("../engines.js");
+  assert.equal(localWhisperId("onnx-community/whisper-base"), "onnx-community/whisper-base");
+  assert.equal(localWhisperId(undefined), "onnx-community/whisper-small");
+  assert.equal(localWhisperId("evil/../x"), "onnx-community/whisper-small");
+  assert.ok(LOCAL_WHISPER.length >= 2);
+});

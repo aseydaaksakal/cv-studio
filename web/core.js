@@ -17,6 +17,43 @@ export function defaultVoiceLang(saved, navigatorLanguage) {
   return prefix ? prefix[0] : "en-US";
 }
 
+/* ───────────────────────── in-browser Whisper helpers ───────────────────────── */
+
+/** Names for the codes Whisper can emit; anything else is shown as the code itself. */
+const WHISPER_NAMES = {
+  tr: "Türkçe", en: "English", de: "Deutsch", fr: "Français", es: "Español", pt: "Português", it: "Italiano", nl: "Nederlands", ru: "Русский",
+  uk: "Українська", pl: "Polski", ar: "العربية", fa: "فارسی", hi: "हिन्दी", bn: "বাংলা", ur: "اردو", id: "Bahasa Indonesia", zh: "中文",
+  ja: "日本語", ko: "한국어", vi: "Tiếng Việt", th: "ไทย", sv: "Svenska", el: "Ελληνικά", he: "עברית", az: "Azərbaycan", kk: "Қазақша",
+  ro: "Română", hu: "Magyar", cs: "Čeština", da: "Dansk", fi: "Suomi", no: "Norsk", bg: "Български", sr: "Српски", hr: "Hrvatski",
+  ms: "Bahasa Melayu", ta: "தமிழ்", te: "తెలుగు", sw: "Kiswahili", ku: "Kurdî",
+};
+export const whisperLangName = (code) => WHISPER_NAMES[code] || code;
+
+/**
+ * Language detection for Whisper: given the decoder's logits for the token right after <|startoftranscript|>
+ * and the model's lang_to_id map ("<|tr|>" → id), return the most probable language code.
+ * Pure so it can be unit-tested; the model call that produces the logits lives in engines.js.
+ */
+export function pickLanguage(logits, langToId) {
+  let best = null, bestScore = -Infinity;
+  for (const [token, id] of Object.entries(langToId || {})) {
+    const s = logits[id];
+    if (typeof s === "number" && s > bestScore) { bestScore = s; best = token.replace(/^<\||\|>$/g, ""); }
+  }
+  return best;
+}
+
+/** Mix a set of channels into one Float32Array (what Whisper wants). */
+export function toMono(channels) {
+  if (channels.length === 1) return channels[0];
+  const n = channels[0].length, out = new Float32Array(n);
+  for (const ch of channels) for (let i = 0; i < n; i++) out[i] += ch[i] / channels.length;
+  return out;
+}
+
+/** Peak level of a clip; used to tell the user when the microphone delivered silence. */
+export function peakLevel(samples) { let p = 0; for (let i = 0; i < samples.length; i++) { const a = Math.abs(samples[i]); if (a > p) p = a; } return p; }
+
 /* Pure logic for CV Studio web: no DOM, no network. Tested with node:test. */
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
