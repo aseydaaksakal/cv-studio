@@ -60,14 +60,15 @@ Four options, in ⚙ settings. The first two are free and need no key.
 
 Two jobs with very different demands. **Editing** ("delete the name", "make the title Staff Engineer") is easy: the model only has to emit two or three operations. **Parsing** a full CV into JSON is hard: it has to keep every job, date and language.
 
-| Model | Editing | Parsing a full CV | Needs |
+| Size | Editing | Parsing a full CV | Needs |
 |---|---|---|---|
 | under 3B | unreliable | loses sections | — |
-| **Qwen 2.5 3B / Llama 3.2 3B** | works | keeps the outline, drops detail | ~3 GB VRAM |
-| **Qwen 2.5 7B / Llama 3.1 8B** (recommended) | reliable | good | ~6 GB VRAM |
-| **14B** | reliable | very good | ~10 GB VRAM |
-| **32B, or Ollama with `qwen3.8:27b`** | reliable | matches a cloud model | ~20 GB VRAM |
+| **3B** | works | keeps the outline, drops detail | ~3 GB VRAM |
+| **7–8B** (default) | reliable | good | ~6 GB VRAM |
+| **larger, or Ollama with a 27B–32B model** | reliable | matches a cloud model | 10–20 GB VRAM |
 | cloud (Claude, GPT) | reliable | best | a key |
+
+The dropdown is **not a hardcoded list**: it is read from WebLLM's own catalogue when you open settings, so every entry is a model this browser can actually run, labelled with the memory it needs. The default is the largest one that fits in about 8 GB. Sizes above that are there if your GPU has the room.
 
 **Do not take our word for it.** ⚙ settings has a **Test this model** button. It sends one instruction whose correct answer is known and checks four things: the reply is JSON, it contains operations, they produce exactly the requested change, and nothing else was touched. You get *"Passed — correct in 2.4s"* or the specific reason it failed. Run it after changing models, or on a machine you have never tried.
 

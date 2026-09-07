@@ -17,8 +17,15 @@ const WIPE = { ops: [
 
 const NOOP = { ops: [], note: "Bunu anlayamadım." };
 
+const CATALOGUE = { model_list: [
+  { model_id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC", vram_required_MB: 1200 },
+  { model_id: "Qwen2.5-7B-Instruct-q4f16_1-MLC", vram_required_MB: 5900 },
+  { model_id: "snowflake-arctic-embedding-m-q0f32-MLC", vram_required_MB: 500 },
+] };
+
 const webllmModule = (reply) =>
-  "export async function CreateMLCEngine(m, o) { o?.initProgressCallback?.({ text: 'stub', progress: 1 });"
+  "export const prebuiltAppConfig = " + JSON.stringify(CATALOGUE) + ";"
+  + " export async function CreateMLCEngine(m, o) { o?.initProgressCallback?.({ text: 'stub', progress: 1 });"
   + " return { chat: { completions: { create: async () => ({ choices: [{ message: { content: "
   + JSON.stringify(JSON.stringify(reply)) + " } }] }) } } }; }";
 
@@ -246,7 +253,11 @@ test("the model test button grades the selected model", async ({ page }) => {
   await stubModel(page, { ops: [{ op: "set", path: "basics.title", value: "Staff Engineer" }], note: "ok" });
   await page.goto("/");
   await page.click("#btn-settings-landing");
-  await expect(page.locator("#localmodel option")).toHaveCount(8);
+  // The list comes from WebLLM's own catalogue, so no unusable id is ever offered.
+  await expect(page.locator("#localmodel option")).toHaveCount(3);
+  await expect(page.locator("#localmodel option").first()).toContainText("Qwen2.5-1.5B-Instruct");
+  await expect(page.locator("#localmodel option").nth(1)).toContainText("~5.8 GB VRAM");
+  await expect(page.locator("#localmodel")).toHaveValue("Qwen2.5-7B-Instruct-q4f16_1-MLC");
   await page.click("#btn-test-model");
   await expect(page.locator("#test-result")).toContainText("Passed", { timeout: 15000 });
 });
@@ -264,6 +275,7 @@ test("a model that replies with prose is reported as failing", async ({ page }) 
 test("choosing Other reveals a field for any MLC model id", async ({ page }) => {
   await page.goto("/");
   await page.click("#btn-settings-landing");
+  await expect(page.locator("#localmodel option")).toHaveCount(3);
   await expect(page.locator("#custommodel-row")).toBeHidden();
   await page.selectOption("#localmodel", "__custom__");
   await expect(page.locator("#custommodel-row")).toBeVisible();

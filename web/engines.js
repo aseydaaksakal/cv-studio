@@ -8,17 +8,52 @@
  * edition's local Ollama + faster-whisper.
  */
 
-/** Models compiled for WebGPU. Larger is better for parsing; see the README table. */
+/** Fallback list, used only when the real catalogue cannot be fetched. */
 export const LOCAL_MODELS = [
   ["Qwen2.5-1.5B-Instruct-q4f16_1-MLC", "Qwen 2.5 1.5B — ~1.1 GB · edits only, parsing loses detail"],
   ["Qwen2.5-3B-Instruct-q4f16_1-MLC", "Qwen 2.5 3B — ~2.0 GB · minimum for reliable editing"],
   ["Llama-3.2-3B-Instruct-q4f16_1-MLC", "Llama 3.2 3B — ~2.0 GB"],
   ["Qwen2.5-7B-Instruct-q4f16_1-MLC", "Qwen 2.5 7B — ~4.5 GB · recommended, parses a full CV well"],
   ["Llama-3.1-8B-Instruct-q4f16_1-MLC", "Llama 3.1 8B — ~5.0 GB"],
-  ["Qwen2.5-14B-Instruct-q4f16_1-MLC", "Qwen 2.5 14B — ~8.5 GB · needs ~10 GB VRAM"],
-  ["Qwen2.5-32B-Instruct-q4f16_1-MLC", "Qwen 2.5 32B — ~18 GB · needs ~20 GB VRAM (RTX 4090/5090)"],
   ["__custom__", "Other — type an MLC model id"],
 ];
+
+/**
+ * The real catalogue of models WebLLM can run, read from its own config so we
+ * never offer an id that does not exist. Sorted by memory, largest last.
+ * Falls back to LOCAL_MODELS if the module cannot be loaded.
+ */
+export async function availableLocalModels() {
+  try {
+    const webllm = await import(WEBLLM_URL);
+    const list = (webllm.prebuiltAppConfig?.model_list || [])
+      .filter((m) => /instruct|chat|it-/i.test(m.model_id) && !/embedding/i.test(m.model_id))
+      .map((m) => ({ id: m.model_id, mb: m.vram_required_MB || 0 }))
+      .sort((a, b) => a.mb - b.mb);
+    if (!list.length) return LOCAL_MODELS;
+    const seen = new Set();
+    const out = [];
+    for (const m of list) {
+      if (seen.has(m.id)) continue;
+      seen.add(m.id);
+      const gb = m.mb ? ` — ~${(m.mb / 1024).toFixed(1)} GB VRAM` : "";
+      out.push([m.id, m.id.replace(/-MLC$/, "").replace(/-q4f\d+_\d+$/, "") + gb]);
+    }
+    out.push(["__custom__", "Other — type an MLC model id"]);
+    return out;
+  } catch {
+    return LOCAL_MODELS;
+  }
+}
+
+/** The largest model the catalogue offers that fits in `budgetGB`. */
+export function pickForBudget(models, budgetGB) {
+  const fits = models.filter(([id, label]) => {
+    const m = /~([\d.]+) GB/.exec(label);
+    return id !== "__custom__" && m && Number(m[1]) <= budgetGB;
+  });
+  return fits.length ? fits[fits.length - 1][0] : null;
+}
 export const LOCAL_WHISPER = [
   ["onnx-community/whisper-base", "Whisper base — ~80 MB, fast, weak on Turkish"],
   ["onnx-community/whisper-small", "Whisper small — ~250 MB, good multilingual (default)"],

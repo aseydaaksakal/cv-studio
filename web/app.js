@@ -1,6 +1,6 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
 import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, applyOps, download, extractJSON, looksDestructive, normalize, plainText, renderATS, renderStyled } from "./core.js";
-import { LOCAL_MODELS, LOCAL_WHISPER, hasWebGPU, localComplete, localTranscribe, ollamaModels, probeModel } from "./engines.js";
+import { LOCAL_MODELS, LOCAL_WHISPER, availableLocalModels, hasWebGPU, localComplete, localTranscribe, ollamaModels, pickForBudget, probeModel } from "./engines.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
 
@@ -317,7 +317,21 @@ $("#btn-txt").onclick = () => download(fileBase() + ".txt", plainText(state.cv))
 $("#btn-new").onclick = () => { if (confirm("Start over? This clears the CV and photo from this browser.")) { state.photo = null; $("#photo-toggle").checked = false; state.history = []; state.cv = EMPTY(); localStorage.removeItem("cvstudio.cv"); localStorage.removeItem("cvstudio.photo"); $("#messages").innerHTML = ""; renderForm(); renderPreview(); showLanding(); status(""); } };
 
 const dlg = $("#settings");
-for (const [v, label] of LOCAL_MODELS) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#localmodel").appendChild(o); }
+function fillModels(models) {
+  $("#localmodel").innerHTML = "";
+  for (const [v, label] of models) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#localmodel").appendChild(o); }
+  const wanted = models.some(([v]) => v === settings.localmodel) ? settings.localmodel
+    : (pickForBudget(models, 8) || models[0][0]);
+  $("#localmodel").value = wanted; settings.localmodel = wanted; saveSettings();
+}
+fillModels(LOCAL_MODELS);
+let modelsLoaded = false;
+async function loadRealModelList() {
+  if (modelsLoaded) return; modelsLoaded = true;
+  $("#gpu-note").textContent = "Reading the model catalogue…";
+  fillModels(await availableLocalModels());
+  syncSettingsForm();
+}
 for (const [v, label] of LOCAL_WHISPER) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#localwhisper").appendChild(o); }
 function syncSettingsForm() {
   const p = $("#provider").value, e = $("#engine").value;
@@ -330,13 +344,16 @@ function syncSettingsForm() {
   });
   $("#localwhisper-row").hidden = e !== "local"; $("#sttkey-row").hidden = e !== "whisper"; $("#desktopurl-row").hidden = e !== "desktop";
   $("#model").placeholder = p === "openai" ? "gpt-4o-mini" : "claude-sonnet-5";
-  $("#gpu-note").textContent = hasWebGPU() ? "WebGPU available: in-browser models will use your GPU." : "No WebGPU in this browser: in-browser text models will not run; Whisper falls back to CPU. Chrome or Edge 113+ recommended.";
+  if (p === "local") $("#gpu-note").textContent = hasWebGPU()
+    ? "WebGPU available. Only models this browser can actually run are listed — press Test this model to confirm yours works."
+    : "No WebGPU in this browser: in-browser text models will not run. Chrome or Edge 113+ recommended.";
+  else $("#gpu-note").textContent = hasWebGPU() ? "WebGPU available: in-browser models will use your GPU." : "No WebGPU in this browser: in-browser text models will not run; Whisper falls back to CPU. Chrome or Edge 113+ recommended.";
 }
 const openSettings = () => {
   $("#provider").value = settings.provider; $("#localmodel").value = settings.localmodel; $("#custommodel").value = settings.custommodel || ""; $("#apikey").value = settings.apikey || ""; $("#model").value = settings.model || ""; $("#baseurl").value = settings.baseurl || "";
   $("#engine").value = settings.engine; $("#localwhisper").value = settings.localwhisper; $("#sttkey").value = settings.sttkey || "";
   $("#ollamaurl").value = settings.ollamaurl; $("#ollamamodel").value = settings.ollamamodel; $("#desktopurl").value = settings.desktopurl;
-  syncSettingsForm(); dlg.showModal();
+  syncSettingsForm(); dlg.showModal(); loadRealModelList();
 };
 $("#btn-settings").onclick = openSettings; $("#btn-settings-landing").onclick = openSettings;
 $("#provider").onchange = syncSettingsForm; $("#engine").onchange = syncSettingsForm;

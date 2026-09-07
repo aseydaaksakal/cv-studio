@@ -184,3 +184,24 @@ test("probeModel grades a model on a known instruction", async () => {
   assert.match(dead.detail, /could not be reached/);
   assert.equal(PROBE.cv.basics.title, "Engineer", "the probe CV is not mutated");
 });
+
+test("pickForBudget picks the largest model that fits the VRAM budget", async () => {
+  const { pickForBudget } = await import("../engines.js");
+  const models = [
+    ["small", "Qwen 1.5B — ~1.2 GB VRAM"],
+    ["mid", "Qwen 7B — ~5.8 GB VRAM"],
+    ["big", "Qwen 32B — ~19.0 GB VRAM"],
+    ["__custom__", "Other — type an MLC model id"],
+  ];
+  assert.equal(pickForBudget(models, 8), "mid");
+  assert.equal(pickForBudget(models, 25), "big");
+  assert.equal(pickForBudget(models, 1), null);
+  assert.equal(pickForBudget([["__custom__", "Other"]], 8), null);
+});
+
+test("availableLocalModels falls back to the curated list when the catalogue is unreachable", async () => {
+  const { availableLocalModels, LOCAL_MODELS } = await import("../engines.js");
+  const models = await availableLocalModels();   // no network in the test runner
+  assert.deepEqual(models, LOCAL_MODELS);
+  assert.equal(models.at(-1)[0], "__custom__");
+});
