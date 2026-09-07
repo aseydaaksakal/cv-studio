@@ -3,7 +3,16 @@ import { test, expect } from "@playwright/test";
 /** Canned AI reply: rename the person and explain. Proves the chat → AI → preview loop without a real key. */
 const EDITED = { cv: { basics: { name: "Elif Demir-Yılmaz", title: "Staff Backend Engineer" }, summary: "Edited by the fake model." }, note: "Renamed and retitled." };
 
+const FAKE_WEBLLM = `export async function CreateMLCEngine(model, opts) {
+  opts?.initProgressCallback?.({ text: "stub load", progress: 1 });
+  return { chat: { completions: { create: async () => ({ choices: [{ message: { content: ${JSON.stringify(JSON.stringify(EDITED))} } }] }) } } };
+}`;
+const FAKE_TRANSFORMERS = `export const env = {}; export async function pipeline() { return async () => ({ text: " özeti kısalt lütfen " }); }`;
+
 test.beforeEach(async ({ page }) => {
+  await page.route(/esm\.run\/@mlc-ai\/web-llm/, (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: FAKE_WEBLLM }));
+  await page.route(/cdn\.jsdelivr\.net\/npm\/@huggingface\/transformers/, (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: FAKE_TRANSFORMERS }));
+  await page.addInitScript(() => { if (!("gpu" in navigator)) Object.defineProperty(navigator, "gpu", { value: {}, configurable: true }); });
   await page.route("https://api.anthropic.com/v1/messages", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ content: [{ type: "text", text: JSON.stringify(EDITED) }] }) }));
   await page.route(/cdn\.jsdelivr\.net.*mammoth/, (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: "window.mammoth={extractRawText:async()=>({value:'stub'})}" }));
@@ -30,8 +39,10 @@ test("templates switch and the ATS view is plain", async ({ page }) => {
   await expect(frame.locator(".name")).toHaveText("Elif Demir");
 });
 
-test("chat without a key explains what to do", async ({ page }) => {
-  await page.goto("/"); await page.click("#btn-sample");
+test("cloud engine without a key explains what to do", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => localStorage.setItem("cvstudio.settings", JSON.stringify({ provider: "anthropic" })));
+  await page.reload(); await page.click("#btn-sample");
   await page.fill("#ask", "Make it shorter");
   await page.press("#ask", "Enter");
   await expect(page.locator(".msg.user")).toHaveText("Make it shorter");
@@ -94,19 +105,6 @@ test("dropping a saved JSON restores a CV", async ({ page }) => {
   await expect(page.frameLocator("#frame").locator(".name")).toHaveText("Kemal Test");
 });
 
-test("voice language picker is populated, remembers the choice, and Whisper without a key explains itself", async ({ page }) => {
-  await page.goto("/"); await page.click("#btn-sample");
-  const options = await page.locator("#voice-lang option").count();
-  expect(options).toBeGreaterThan(20);
-  await page.selectOption("#voice-lang", "de-DE");
-  await page.reload();
-  await expect(page.locator("#voice-lang")).toHaveValue("de-DE");
-
-  await page.evaluate(() => localStorage.setItem("cvstudio.settings", JSON.stringify({ engine: "whisper", provider: "anthropic", apikey: "k" })));
-  await page.reload();
-  await page.click("#btn-mic");
-  await expect(page.locator("#mic-status")).toContainText("Whisper needs an OpenAI key");
-});
 
 test("speech transcript with recognition noise still reaches the model and is applied", async ({ page }) => {
   await page.goto("/");
@@ -116,4 +114,35 @@ test("speech transcript with recognition noise still reaches the model and is ap
   await page.press("#ask", "Enter");
   await expect(page.locator(".msg.user")).toContainText("özeti kısalt");
   await expect(page.frameLocator("#frame").locator(".role")).toHaveText("Staff Backend Engineer");
+});
+
+test("default engine is in-browser: no key, the edit still lands", async ({ page }) => {
+  await page.goto("/"); await page.click("#btn-sample");
+  await page.fill("#ask", "unvanı staff yap"); await page.press("#ask", "Enter");
+  await expect(page.locator(".msg.assistant").last()).toHaveText("Renamed and retitled.");
+  await expect(page.frameLocator("#frame").locator(".role")).toHaveText("Staff Backend Engineer");
+});
+
+test("settings default to the free in-browser engines and hide key fields", async ({ page }) => {
+  await page.goto("/"); await page.click("#btn-settings-landing");
+  await expect(page.locator("#provider")).toHaveValue("local");
+  await expect(page.locator("#engine")).toHaveValue("local");
+  await expect(page.locator("#apikey-row")).toBeHidden();
+  await expect(page.locator("#localmodel-row")).toBeVisible();
+  await page.selectOption("#provider", "anthropic");
+  await expect(page.locator("#apikey-row")).toBeVisible();
+});
+
+test("mic: record, auto-transcribe locally, transcript lands in the box, Enter applies it", async ({ page, context }) => {
+  await context.grantPermissions(["microphone"]);
+  await page.goto("/"); await page.click("#btn-sample");
+  await page.click("#btn-mic");
+  await expect(page.locator("#btn-mic")).toHaveClass(/live/);
+  await page.waitForTimeout(400);
+  await page.click("#btn-mic");
+  await expect(page.locator("#ask")).toHaveValue("özeti kısalt lütfen");
+  await expect(page.locator("#mic-status")).toContainText("press Enter");
+  await page.press("#ask", "Enter");
+  await expect(page.locator(".msg.user")).toHaveText("özeti kısalt lütfen");
+  await expect(page.frameLocator("#frame").locator(".name")).toHaveText("Elif Demir-Yılmaz");
 });

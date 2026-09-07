@@ -16,7 +16,7 @@
 
 CV Studio is a CV editor that works the way you would brief a person: give it the document, then say what you want. *"Cut this to one page."* *"Add rag-eval under Projects."* *"Tailor it for this job description."* *"Bunu İngilizceye çevir."* Each instruction updates the CV; the preview updates with it; **Undo** takes it back.
 
-It runs entirely in your browser. There is no server. Your CV is parsed locally, your API key is stored locally, and the only network call is the one you configure, from your browser to your own AI provider.
+It runs entirely in your browser. There is no server and, by default, **no API key**: an open-source model (Qwen 2.5) and Whisper run on your own GPU through WebGPU, the way the desktop edition runs Ollama. Your CV never leaves the machine. If you prefer, switch to Anthropic or any OpenAI-compatible provider with your own key.
 
 ## How it works
 
@@ -33,19 +33,16 @@ It runs entirely in your browser. There is no server. Your CV is parsed locally,
         └──────────────── every change re-renders the preview ───────────┘
 ```
 
-**Voice** has two engines, chosen in settings:
+**Voice** — press the mic and speak in any language. The default engine is Whisper running in your browser: it detects the language itself and handles mixed Turkish/English. Two alternatives in settings: the browser's own recogniser (instant, but limited to the browser's language) and the Whisper API with an OpenAI key. The transcript lands in the text box first; you glance at it and press Enter. No recogniser is perfect, and the model is told it may be reading a noisy transcript and to act on the intent.
 
-- *Browser recognition* (Chrome, Edge) — instant and free; pick the spoken language in the selector next to the mic (30 languages, Turkish and English included; the choice is remembered). Nothing is recorded or uploaded.
-- *Whisper* — records the clip and sends it to OpenAI's transcription API with your own key; detects the language automatically and copes with mixed Turkish/English. Better accuracy, one network call per utterance.
-
-Either way the transcript lands in the text box first. You read it, fix a word if needed, and press Enter — the model is told it may be reading a speech transcript with errors and to act on the intent. No speech recogniser is 100% accurate; the review step is what makes the workflow reliable.
+**First use downloads the models** (Whisper base ~80 MB, Qwen 1.5B ~1 GB) and caches them; after that everything is instant and offline. Larger models can be picked in settings for better edits on a strong GPU. Chrome or Edge 113+ for WebGPU.
 
 **The AI is constrained.** It receives the CV as JSON and returns JSON. It is instructed never to invent employers, dates, metrics or credentials, to change only what the instruction requires, and to say in one sentence what it changed. That sentence appears in the chat so you can check it against the preview.
 
 ## Using it
 
 1. Open https://aseydaaksakal.github.io/cv-studio/ and drop a **PDF**, **DOCX** or a **JSON** saved earlier. Or click *Try with a sample* to see it work on a fictional CV.
-2. Open **⚙ AI settings** once. Pick Anthropic or any OpenAI-compatible endpoint, paste your key. Optionally set the voice language (`tr-TR`, `en-US`, …); it defaults to your browser's.
+2. Nothing to configure: the in-browser engines are the default. Open **⚙ AI settings** only if you want a cloud provider with your own key, or a larger local model.
 3. Talk to it. Quick actions cover the common asks — sharper summary, stronger bullets, ATS-friendly, fit one page, translate. Anything else, just type or say it.
 4. Switch to **Fields** to fix a date, reorder jobs, or add a line without involving the AI.
 5. Pick a template, add a photo if you want one, **Download PDF** (browser print dialog → Save as PDF, A4, no headers/footers). **Save JSON** keeps an editable copy; **Plain text** is for forms that strip formatting.
@@ -57,8 +54,8 @@ Your CV stays in this browser's `localStorage` between visits. **New CV** clears
 | | Web (`web/`) | Desktop (`backend/`, `frontend/`) |
 |---|---|---|
 | Runs | in the browser, hosted free on GitHub Pages | on your machine: FastAPI + local Ollama |
-| AI | your key → Anthropic or OpenAI-compatible | a local model; nothing leaves the machine |
-| Voice | browser speech recognition | faster-whisper, offline |
+| AI | open-source model in the browser (WebGPU), or your key → Anthropic / OpenAI-compatible | a local model via Ollama; nothing leaves the machine |
+| Voice | Whisper in the browser, language auto-detected | faster-whisper, offline |
 | Best for | anyone, any device, zero setup | fully offline work with sensitive data |
 
 The desktop edition keeps content generation out of the model entirely: the model classifies a command into actions and Python applies them. See `AGENTS.md` and `backend/` for its architecture and tests.
@@ -68,9 +65,9 @@ The desktop edition keeps content generation out of the model entirely: the mode
 The web edition is tested at two levels, and CI runs both on every push:
 
 - **Unit** (`web/tests/core.test.mjs`, node:test): normalisation, JSON extraction, field editing, HTML escaping, every template, plain-text export.
-- **End-to-end** (`web/tests/app.e2e.mjs`, Playwright, real Chromium): landing → sample → workspace; template switching; chat without a key; chat with a key against a mocked AI endpoint, including the change note and Undo; quick actions; Fields editing reflected in the preview; persistence across reload; New CV; JSON/text export; dropping a saved JSON.
+- **End-to-end** (`web/tests/app.e2e.mjs`, Playwright, real Chromium with a fake microphone): landing → sample → workspace; template switching; keyless in-browser engine editing (model stubbed at the module boundary); cloud engine without a key; cloud engine against a mocked endpoint with the change note and Undo; quick actions; **mic → recording → local transcription → Enter → edit applied**; Fields editing; persistence; New CV; exports; dropping a saved JSON.
 
-What automation cannot cover and is checked by hand on each release: microphone permission flow, the print-to-PDF dialog, real PDF/DOCX parsing on a handful of layouts.
+What automation cannot cover and is checked by hand on each release: real model downloads and WebGPU on actual hardware, transcription accuracy, the print-to-PDF dialog, real PDF/DOCX parsing on a handful of layouts.
 
 ```bash
 cd web

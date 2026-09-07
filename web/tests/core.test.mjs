@@ -73,11 +73,3 @@ test("plainText is a faithful, ordered dump", () => {
   assert.ok(txt.includes("Turkish / Native"));
 });
 
-test("voice language defaults: saved choice wins, then browser locale, then en-US", async () => {
-  const { VOICE_LANGS, defaultVoiceLang } = await import("../core.js");
-  assert.equal(defaultVoiceLang("de-DE", "tr-TR"), "de-DE");
-  assert.equal(defaultVoiceLang("nope", "tr"), "tr-TR");
-  assert.equal(defaultVoiceLang(undefined, "pt-BR"), "pt-BR");
-  assert.equal(defaultVoiceLang(undefined, "zz"), "en-US");
-  assert.ok(VOICE_LANGS.some(([c]) => c === "tr-TR") && VOICE_LANGS.some(([c]) => c === "ar-SA"));
-});

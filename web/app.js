@@ -1,5 +1,6 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
-import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, VOICE_LANGS, applyField, defaultVoiceLang, download, extractJSON, normalize, plainText, renderATS, renderStyled } from "./core.js";
+import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, download, extractJSON, normalize, plainText, renderATS, renderStyled } from "./core.js";
+import { LOCAL_MODELS, LOCAL_WHISPER, hasWebGPU, localComplete, localTranscribe } from "./engines.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
 
@@ -8,7 +9,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dis
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const state = { cv: EMPTY(), history: [], photo: null, busy: false };
-const settings = JSON.parse(localStorage.getItem("cvstudio.settings") || "{}");
+const settings = Object.assign({ provider: "local", engine: "local", localmodel: LOCAL_MODELS[0][0], localwhisper: LOCAL_WHISPER[0][0] }, JSON.parse(localStorage.getItem("cvstudio.settings") || "{}"));
+const saveSettings = () => localStorage.setItem("cvstudio.settings", JSON.stringify(settings));
+const progress = (msg, pct) => status(pct ? `${msg} ${pct}%` : msg);
 
 function persist() {
   localStorage.setItem("cvstudio.cv", JSON.stringify(state.cv));
@@ -42,7 +45,8 @@ const haveKey = () => Boolean(settings.apikey);
 const defaultModel = () => (settings.provider === "openai" ? "gpt-4o-mini" : "claude-sonnet-5");
 
 async function callModel(system, user) {
-  if (!haveKey()) throw new Error("Add an API key first (⚙ AI settings).");
+  if (settings.provider === "local") return localComplete(settings.localmodel, system, user, progress);
+  if (!haveKey()) throw new Error("Add an API key first (⚙ AI settings), or switch the AI engine to \"In your browser\".");
   const model = settings.model || defaultModel();
   if (settings.provider === "openai") {
     const base = (settings.baseurl || "https://api.openai.com/v1").replace(/\/$/, "");
@@ -109,10 +113,10 @@ async function readFile(file) {
     text = (await window.mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })).value;
   } else { text = await file.text(); }
   if (!text.trim()) throw new Error("No text found. Scanned PDFs need OCR first.");
-  if (!haveKey()) {
+  if (settings.provider !== "local" && !haveKey()) {
     // No key yet: open the workspace with the raw text in the summary so nothing is lost, and ask for a key.
     setCV({ ...EMPTY(), summary: text.slice(0, 2000) }); showWorkspace();
-    say("assistant", "I read the file, but structuring it needs an AI key. Open ⚙ AI settings, add one, then drop the file again — or fill the Fields tab by hand.");
+    say("assistant", "I read the file, but structuring it needs an AI engine. Open ⚙ AI settings and either switch to the free in-browser model or add a key, then drop the file again.");
     return;
   }
   await parseWithAI(text);
@@ -125,34 +129,27 @@ let recognizer = null, recorder = null, listening = false;
 const micStatus = (t) => { $("#mic-status").textContent = t; };
 const setLive = (on) => { listening = on; $("#btn-mic").classList.toggle("live", on); };
 
-for (const [code, name] of VOICE_LANGS) { const o = document.createElement("option"); o.value = code; o.textContent = name; $("#voice-lang").appendChild(o); }
-$("#voice-lang").value = defaultVoiceLang(settings.lang, navigator.language);
-$("#voice-lang").onchange = (e) => { settings.lang = e.target.value; localStorage.setItem("cvstudio.settings", JSON.stringify(settings)); };
-
 function toggleMic() {
   if (listening) { if (recognizer) recognizer.stop(); if (recorder && recorder.state === "recording") recorder.stop(); return; }
-  if (settings.engine === "whisper") return startWhisper();
-  return startBrowser();
+  if (settings.engine === "browser") return startBrowser();
+  return startRecording(settings.engine === "whisper" ? transcribeWithAPI : transcribeLocally);
 }
 
-/* Engine 1: the browser's recogniser. Instant, but it needs to be told the language. */
+/* Browser recogniser: instant, but it only knows the browser's language. Kept as the lightweight option. */
 function startBrowser() {
-  if (!Recognition) { micStatus("This browser has no speech recognition — pick Whisper in ⚙ settings, or use Chrome/Edge."); return; }
+  if (!Recognition) { micStatus("This browser has no speech recognition — the default Whisper engine works everywhere."); return; }
   recognizer = new Recognition();
-  recognizer.lang = $("#voice-lang").value;
-  recognizer.interimResults = true; recognizer.continuous = false; recognizer.maxAlternatives = 1;
-  const base = $("#ask").value ? $("#ask").value.trim() + " " : "";
-  recognizer.onstart = () => { setLive(true); micStatus(`Listening in ${$("#voice-lang").selectedOptions[0].textContent}… click again to stop.`); };
-  recognizer.onresult = (e) => { let t = ""; for (const r of e.results) t += r[0].transcript; $("#ask").value = base + t; };
-  recognizer.onerror = (e) => micStatus(e.error === "not-allowed" ? "Microphone blocked — allow it in the address bar." : e.error === "no-speech" ? "Heard nothing. Try again closer to the mic." : "Voice error: " + e.error);
-  recognizer.onend = () => { setLive(false); micStatus($("#ask").value.trim() ? "Check the text, then Send (Enter)." : ""); $("#ask").focus(); };
+  recognizer.lang = navigator.language || "en-US";
+  recognizer.interimResults = true; recognizer.continuous = false;
+  recognizer.onstart = () => { setLive(true); micStatus(`Listening (${recognizer.lang})… click again to stop.`); };
+  recognizer.onresult = (e) => { let t = ""; for (const r of e.results) t += r[0].transcript; $("#ask").value = t; };
+  recognizer.onerror = (e) => micStatus(e.error === "not-allowed" ? "Microphone blocked — allow it in the address bar." : "Voice error: " + e.error);
+  recognizer.onend = () => { setLive(false); micStatus($("#ask").value.trim() ? "Check the text, then press Enter." : ""); $("#ask").focus(); };
   recognizer.start();
 }
 
-/* Engine 2: Whisper through the user's OpenAI key. Detects the language itself; handles mixed languages. */
-async function startWhisper() {
-  const key = settings.sttkey || (settings.provider === "openai" ? settings.apikey : "");
-  if (!key) { micStatus("Whisper needs an OpenAI key — add it in ⚙ settings."); return; }
+/* Record, then hand the clip to a transcriber that detects the language itself. */
+async function startRecording(transcribe) {
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
   catch { micStatus("Microphone blocked — allow it in the address bar."); return; }
@@ -162,19 +159,27 @@ async function startWhisper() {
   recorder.onstop = async () => {
     stream.getTracks().forEach((t) => t.stop()); setLive(false); micStatus("Transcribing…");
     try {
-      const form = new FormData();
-      form.append("file", new Blob(chunks, { type: recorder.mimeType }), "speech.webm");
-      form.append("model", "whisper-1");
-      form.append("prompt", "Instruction for editing a CV. May be Turkish, English or another language.");
-      const r = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: "Bearer " + key }, body: form });
-      if (!r.ok) throw new Error(`Whisper returned ${r.status}`);
-      const text = (await r.json()).text || "";
-      $("#ask").value = ($("#ask").value ? $("#ask").value.trim() + " " : "") + text.trim();
-      micStatus(text.trim() ? "Check the text, then Send (Enter)." : "Heard nothing.");
+      const text = await transcribe(new Blob(chunks, { type: recorder.mimeType }));
+      $("#ask").value = text;
+      micStatus(text ? "Check the text, then press Enter." : "Heard nothing — try again closer to the mic.");
     } catch (e) { micStatus(String(e.message || e)); }
-    $("#ask").focus();
+    status(""); $("#ask").focus();
   };
-  recorder.start(); setLive(true); micStatus("Recording… click again to stop.");
+  recorder.start(); setLive(true); micStatus("Recording — speak in any language, click again to stop.");
+}
+
+async function transcribeLocally(blob) {
+  return localTranscribe(settings.localwhisper, blob, (msg, pct) => micStatus(pct ? `${msg} ${pct}%` : msg));
+}
+
+async function transcribeWithAPI(blob) {
+  const key = settings.sttkey || (settings.provider === "openai" ? settings.apikey : "");
+  if (!key) throw new Error("Whisper API needs an OpenAI key — or switch the voice engine to \"In your browser\".");
+  const form = new FormData();
+  form.append("file", blob, "speech.webm"); form.append("model", "whisper-1");
+  const r = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: "Bearer " + key }, body: form });
+  if (!r.ok) throw new Error(`Whisper API returned ${r.status}`);
+  return ((await r.json()).text || "").trim();
 }
 
 /* ───────────────────────── form editor ───────────────────────── */
@@ -263,10 +268,26 @@ $("#btn-txt").onclick = () => download(fileBase() + ".txt", plainText(state.cv))
 $("#btn-new").onclick = () => { if (confirm("Start over? This clears the CV and photo from this browser.")) { state.photo = null; $("#photo-toggle").checked = false; state.history = []; state.cv = EMPTY(); localStorage.removeItem("cvstudio.cv"); localStorage.removeItem("cvstudio.photo"); $("#messages").innerHTML = ""; renderForm(); renderPreview(); showLanding(); status(""); } };
 
 const dlg = $("#settings");
-const openSettings = () => { $("#provider").value = settings.provider || "anthropic"; $("#apikey").value = settings.apikey || ""; $("#model").value = settings.model || ""; $("#baseurl").value = settings.baseurl || ""; $("#engine").value = settings.engine || "browser"; $("#sttkey").value = settings.sttkey || ""; $("#baseurl-row").hidden = $("#provider").value !== "openai"; dlg.showModal(); };
+for (const [v, label] of LOCAL_MODELS) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#localmodel").appendChild(o); }
+for (const [v, label] of LOCAL_WHISPER) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#localwhisper").appendChild(o); }
+function syncSettingsForm() {
+  const p = $("#provider").value, e = $("#engine").value;
+  $("#localmodel-row").hidden = p !== "local"; $("#apikey-row").hidden = p === "local"; $("#model-row").hidden = p === "local"; $("#baseurl-row").hidden = p !== "openai";
+  $("#localwhisper-row").hidden = e !== "local"; $("#sttkey-row").hidden = e !== "whisper";
+  $("#model").placeholder = p === "openai" ? "gpt-4o-mini" : "claude-sonnet-5";
+  $("#gpu-note").textContent = hasWebGPU() ? "WebGPU available: in-browser models will use your GPU." : "No WebGPU in this browser: in-browser text models will not run; Whisper falls back to CPU. Chrome or Edge 113+ recommended.";
+}
+const openSettings = () => {
+  $("#provider").value = settings.provider; $("#localmodel").value = settings.localmodel; $("#apikey").value = settings.apikey || ""; $("#model").value = settings.model || ""; $("#baseurl").value = settings.baseurl || "";
+  $("#engine").value = settings.engine; $("#localwhisper").value = settings.localwhisper; $("#sttkey").value = settings.sttkey || "";
+  syncSettingsForm(); dlg.showModal();
+};
 $("#btn-settings").onclick = openSettings; $("#btn-settings-landing").onclick = openSettings;
-$("#provider").onchange = (e) => { $("#baseurl-row").hidden = e.target.value !== "openai"; $("#model").placeholder = e.target.value === "openai" ? "gpt-4o-mini" : "claude-sonnet-5"; };
-$("#btn-save-settings").onclick = () => { Object.assign(settings, { provider: $("#provider").value, apikey: $("#apikey").value.trim(), model: $("#model").value.trim(), baseurl: $("#baseurl").value.trim(), engine: $("#engine").value, sttkey: $("#sttkey").value.trim() }); localStorage.setItem("cvstudio.settings", JSON.stringify(settings)); };
+$("#provider").onchange = syncSettingsForm; $("#engine").onchange = syncSettingsForm;
+$("#btn-save-settings").onclick = () => {
+  Object.assign(settings, { provider: $("#provider").value, localmodel: $("#localmodel").value, apikey: $("#apikey").value.trim(), model: $("#model").value.trim(), baseurl: $("#baseurl").value.trim(), engine: $("#engine").value, localwhisper: $("#localwhisper").value, sttkey: $("#sttkey").value.trim() });
+  saveSettings();
+};
 
 /* boot */
 const saved = localStorage.getItem("cvstudio.cv");

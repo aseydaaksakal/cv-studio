@@ -7,5 +7,5 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   use: { baseURL: "http://localhost:4173", trace: "retain-on-failure" },
   webServer: { command: "node tests/serve.mjs", url: "http://localhost:4173", reuseExistingServer: !process.env.CI },
-  projects: [{ name: "chromium", use: { browserName: "chromium" } }],
+  projects: [{ name: "chromium", use: { browserName: "chromium", launchOptions: { args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] } } }],
 });
