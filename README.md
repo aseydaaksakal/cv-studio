@@ -35,7 +35,13 @@ It runs entirely in your browser. There is no server and, by default, **no API k
    └────────────────────────────────────────────────────────────┘
 ```
 
-Speak or type an instruction. The model does not rewrite the CV; it emits **small operations** — `set basics.title`, `delete experience.1`, `append projects` — which the app applies itself. That is why *"delete the name Elif Demir"* removes the name and nothing else. If a reply would destroy most of the CV without you asking, it is refused and the CV stays as it was.
+Speak or type an instruction. The model does not rewrite the CV; it emits **small operations** — `set basics.title`, `delete experience.1`, `append projects` — which the app applies itself. That is why *"delete the name Elif Demir"* removes the name and nothing else.
+
+Three things protect you from a small model getting it wrong:
+
+- **Loose paths are repaired.** Models write `name`, `cv.basics.name`, `Full Name` or `experience[1].title`; all of those are mapped onto the real shape rather than silently ignored.
+- **Nothing is claimed that did not happen.** If no operation could be applied, you get an error naming what the model asked for — never a cheerful "done" over an unchanged CV.
+- **Destructive replies are refused.** A reply that would erase most of the CV is rejected unless you asked to clear it.
 
 **Voice.** Press the mic, speak in any language, press it again. Whisper detects the language itself — Turkish, English, or both in one sentence. The transcript lands in the box; you glance at it and press Enter.
 
@@ -47,7 +53,7 @@ Four options, in ⚙ settings. The first two are free and need no key.
 |---|---|---|
 | **In this browser** (default) | Depends on your GPU. Qwen 2.5 3B is fine for edits; 7B is better. Whisper small handles Turkish well. First use downloads ~250 MB + ~2 GB, then it is cached and offline. | none — needs Chrome/Edge with WebGPU |
 | **Ollama on your machine** | The best option if you already run Ollama. Your full GPU, your own model (`qwen3.8:27b`), no download in the browser. | one environment variable, below |
-| **CV Studio desktop backend** | Same, plus faster-whisper for speech. | run the backend, below |
+| **CV Studio desktop backend** | Same, plus faster-whisper for speech. If it is unreachable, speech falls back to the in-browser Whisper automatically. | run the backend, below |
 | **Anthropic / OpenAI-compatible** | Best quality, costs money, needs your key. | paste a key |
 
 ### Connect the hosted app to your own machine
@@ -108,7 +114,7 @@ The desktop edition keeps content generation out of the model entirely: the mode
 
 The web edition is tested at two levels, and CI runs both on every push:
 
-- **Unit** (`web/tests/core.test.mjs`, node:test): normalisation, JSON extraction, field editing, **the operation engine** (set/delete/append/insert/move, malformed operations skipped and reported), **the destructive-edit guard**, HTML escaping, every template, plain-text export.
+- **Unit** (`web/tests/core.test.mjs`, node:test): normalisation, JSON extraction, field editing, **path repair** (`name` → `basics.name`, `experience[1].title`, aliases), **the operation engine** (set/delete/append/insert/move, malformed operations skipped and reported), **the destructive-edit guard**, HTML escaping, every template, plain-text export.
 - **End-to-end** (`web/tests/app.e2e.mjs`, Playwright, real Chromium with a fake microphone): landing → sample → workspace; template switching; keyless in-browser engine editing (model stubbed at the module boundary); cloud engine without a key; cloud engine against a mocked endpoint with the change note and Undo; a targeted delete removing only what was named; a wiping reply being refused; an instruction the model cannot act on; the toolbar upload; the left/right layout; quick actions; **mic → recording → local transcription → Enter → edit applied**; Fields editing; persistence; New CV; exports; dropping a saved JSON.
 
 What automation cannot cover and is checked by hand on each release: real model downloads and WebGPU on actual hardware, transcription accuracy, the print-to-PDF dialog, real PDF/DOCX parsing on a handful of layouts.

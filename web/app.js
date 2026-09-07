@@ -80,7 +80,9 @@ async function parseWithAI(text) {
   status("Structuring with AI…");
   const cv = extractJSON(await callModel(SYSTEM_PARSE, text.slice(0, 40000)));
   setCV(cv); showWorkspace(); status("");
-  say("assistant", `Loaded ${cv.basics?.name || "your CV"}. Tell me what to change — type it or press the mic. The Fields tab lets you edit anything by hand.`);
+  const thin = ["experience", "education", "languages"].filter((k) => (state.cv[k] || []).length < 2);
+  say("assistant", `Loaded ${state.cv.basics?.name || "your CV"}. Tell me what to change — type it or press the mic.`
+    + (thin.length ? ` A small local model can drop detail: check ${thin.join(", ")} in the Fields tab, or pick a larger model in ⚙.` : " The Fields tab lets you edit anything by hand."));
 }
 
 async function editWithAI(instruction) {
@@ -93,8 +95,14 @@ async function editWithAI(instruction) {
     let next, detail = "";
     if (Array.isArray(out.ops)) {
       const r = applyOps(state.cv, out.ops); next = r.cv;
-      if (r.applied === 0) { thinking.remove(); say("assistant", out.note || "I did not find anything to change for that. Try saying it differently."); return; }
-      if (r.skipped.length) detail = ` (${r.skipped.length} step(s) could not be applied)`;
+      if (r.applied === 0) {
+        thinking.remove();
+        say("error", r.skipped.length
+          ? `Nothing changed — the model asked for something the CV has no place for:\n${r.skipped.join("\n")}`
+          : "Nothing changed. Say it more concretely, e.g. \"adı sil\", \"unvanı Staff Engineer yap\", \"ikinci işi kaldır\".");
+        return;
+      }
+      if (r.skipped.length) detail = `\n(${r.skipped.length} step skipped: ${r.skipped[0]})`;
     } else if (out.cv && typeof out.cv === "object") next = normalize(out.cv);
     else throw new Error("The model did not return operations.");
     if (looksDestructive(state.cv, next, instruction)) { thinking.remove(); say("error", "That would have wiped most of the CV, so I did not apply it. If you really want to clear it, say \"hepsini sil\" / \"clear everything\"."); return; }
@@ -150,7 +158,16 @@ function toggleMic() {
   if (listening) { if (recognizer) recognizer.stop(); if (recorder && recorder.state === "recording") recorder.stop(); return; }
   if (settings.engine === "browser") return startBrowser();
   const engines = { whisper: transcribeWithAPI, desktop: transcribeWithDesktop, local: transcribeLocally };
-  return startRecording(engines[settings.engine] || transcribeLocally);
+  const chosen = engines[settings.engine] || transcribeLocally;
+  const withFallback = async (blob) => {
+    if (chosen === transcribeLocally) return transcribeLocally(blob);
+    try { return await chosen(blob); }
+    catch (e) {
+      micStatus(`${e.message} Falling back to in-browser Whisper…`);
+      return transcribeLocally(blob);
+    }
+  };
+  return startRecording(withFallback);
 }
 
 /* Browser recogniser: instant, but it only knows the browser's language. Kept as the lightweight option. */

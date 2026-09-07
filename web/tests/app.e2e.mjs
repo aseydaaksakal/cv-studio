@@ -112,12 +112,31 @@ test("a reply that would wipe the CV is refused", async ({ page }) => {
   await expect(page.frameLocator("#frame").locator(".name")).toHaveText("Elif Demir");
 });
 
+test("an operation the CV has no place for is reported, not claimed as done", async ({ page }) => {
+  await stubModel(page, { ops: [{ op: "set", path: "hobbies.0", value: "chess" }], note: "Hobi ekledim." });
+  await openSample(page);
+  await page.fill("#ask", "hobi ekle");
+  await page.press("#ask", "Enter");
+  await expect(page.locator(".msg.error")).toContainText("Nothing changed");
+  await expect(page.locator(".msg.error")).toContainText("hobbies");
+});
+
+test("a loosely written path from the model still applies", async ({ page }) => {
+  await stubModel(page, { ops: [{ op: "remove", path: "Full Name" }], note: "Adı sildim." });
+  await openSample(page);
+  await page.fill("#ask", "Elif Demir yazısını sil");
+  await page.press("#ask", "Enter");
+  await expect(page.locator(".msg.assistant").last()).toHaveText("Adı sildim.");
+  await expect(page.frameLocator("#frame").locator(".name")).toBeEmpty();
+  await expect(page.frameLocator("#frame").locator(".role")).toHaveText("Senior Backend Engineer");
+});
+
 test("an instruction the model cannot act on leaves the CV alone", async ({ page }) => {
   await stubModel(page, NOOP);
   await openSample(page);
   await page.fill("#ask", "hava nasıl");
   await page.press("#ask", "Enter");
-  await expect(page.locator(".msg.assistant").last()).toHaveText("Bunu anlayamadım.");
+  await expect(page.locator(".msg.error")).toContainText("Nothing changed");
   const frame = page.frameLocator("#frame");
   await expect(frame.locator(".name")).toHaveText("Elif Demir");
   await expect(frame.locator(".role")).toHaveText("Senior Backend Engineer");

@@ -117,3 +117,37 @@ test("looksDestructive catches a wiped CV unless the user asked for it", async (
   assert.equal(looksDestructive(before, after, "hepsini sil"), false);
   assert.equal(looksDestructive(before, { ...before, summary: "" }, "özeti sil"), false);
 });
+
+test("normalizePath accepts the shapes models actually write", async () => {
+  const { normalizePath } = await import("../core.js");
+  assert.equal(normalizePath("name"), "basics.name");
+  assert.equal(normalizePath("Full Name"), "basics.name");
+  assert.equal(normalizePath("cv.basics.email"), "basics.email");
+  assert.equal(normalizePath("$.summary"), "summary");
+  assert.equal(normalizePath("experience[1].title"), "experience.1.title");
+  assert.equal(normalizePath("Work Experience.0"), "experience.0");
+  assert.equal(normalizePath("certs.2.year"), "certifications.2.year");
+  assert.equal(normalizePath("basics.name"), "basics.name");
+});
+
+test("applyOps tolerates loose paths and op names from the model", async () => {
+  const { applyOps } = await import("../core.js");
+  const { cv, applied, skipped } = applyOps(normalize(SAMPLE), [
+    { op: "remove", path: "name" },
+    { op: "update", path: "Job Title", value: "Staff Engineer" },
+    { op: "add", path: "Projects", value: { name: "x", description: "", link: "" } },
+  ]);
+  assert.deepEqual(skipped, []);
+  assert.equal(applied, 3);
+  assert.equal(cv.basics.name, "");
+  assert.equal(cv.basics.title, "Staff Engineer");
+  assert.equal(cv.projects.at(-1).name, "x");
+});
+
+test("a single operation object is accepted, and a truly bad path is reported", async () => {
+  const { applyOps } = await import("../core.js");
+  assert.equal(applyOps(normalize(SAMPLE), { op: "set", path: "summary", value: "s" }).applied, 1);
+  const bad = applyOps(normalize(SAMPLE), [{ op: "set", path: "hobbies.0", value: "x" }]);
+  assert.equal(bad.applied, 0);
+  assert.match(bad.skipped[0], /hobbies/);
+});
