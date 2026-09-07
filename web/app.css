@@ -106,3 +106,5 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .stage { display:flex; flex-direction:column; min-height:0; background:#3a3f4b; }
 @media (prefers-color-scheme: light) { .stage { background:#d9dce3; } }
 .stage-status { margin:0; padding:.3rem .9rem; background:var(--panel); border-top:1px solid var(--line); }
+
+select.mini { width:auto; margin:0; padding:.35rem .5rem; font-size:.8rem; max-width:11rem; }

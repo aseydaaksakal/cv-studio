@@ -52,7 +52,8 @@
       <form id="composer" class="composer">
         <textarea id="ask" rows="2" placeholder="Type what to change — or press the mic and say it. Enter sends, Shift+Enter is a new line."></textarea>
         <div class="composer-row">
-          <button type="button" id="btn-mic" class="icon" title="Speak (Web Speech API)">🎙</button>
+          <button type="button" id="btn-mic" class="icon" title="Speak">🎙</button>
+          <select id="voice-lang" class="mini" title="Spoken language"></select>
           <span id="mic-status" class="muted small"></span>
           <span class="spacer"></span>
           <button type="button" id="btn-undo" class="ghost small" disabled>Undo</button>
@@ -102,7 +103,13 @@
     <label>API key <input type="password" id="apikey" placeholder="sk-…" autocomplete="off"></label>
     <label>Model <input type="text" id="model" placeholder="claude-sonnet-5"></label>
     <label id="baseurl-row" hidden>Base URL <input type="text" id="baseurl" placeholder="https://api.openai.com/v1"></label>
-    <label>Voice language <input type="text" id="lang" placeholder="auto (browser language), e.g. tr-TR or en-US"></label>
+    <label>Voice engine
+      <select id="engine">
+        <option value="browser">Browser speech recognition — instant, pick the language next to the mic</option>
+        <option value="whisper">Whisper (OpenAI) — detects the language automatically, more accurate</option>
+      </select>
+    </label>
+    <label id="sttkey-row">OpenAI key for Whisper <input type="password" id="sttkey" placeholder="leave empty to reuse the key above when the provider is OpenAI" autocomplete="off"></label>
     <p class="muted">Get a key: <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a> · <a href="https://platform.openai.com/" target="_blank" rel="noopener">platform.openai.com</a></p>
     <div class="row end">
       <button value="cancel" class="ghost">Cancel</button>

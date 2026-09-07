@@ -1,3 +1,22 @@
+export const VOICE_LANGS = [
+  ["tr-TR", "Türkçe"], ["en-US", "English (US)"], ["en-GB", "English (UK)"], ["de-DE", "Deutsch"], ["fr-FR", "Français"],
+  ["es-ES", "Español"], ["es-MX", "Español (México)"], ["pt-BR", "Português (Brasil)"], ["pt-PT", "Português"], ["it-IT", "Italiano"],
+  ["nl-NL", "Nederlands"], ["ru-RU", "Русский"], ["uk-UA", "Українська"], ["pl-PL", "Polski"], ["ar-SA", "العربية"],
+  ["fa-IR", "فارسی"], ["hi-IN", "हिन्दी"], ["bn-BD", "বাংলা"], ["ur-PK", "اردو"], ["id-ID", "Bahasa Indonesia"],
+  ["zh-CN", "中文 (简体)"], ["zh-TW", "中文 (繁體)"], ["ja-JP", "日本語"], ["ko-KR", "한국어"], ["vi-VN", "Tiếng Việt"],
+  ["th-TH", "ไทย"], ["sv-SE", "Svenska"], ["el-GR", "Ελληνικά"], ["he-IL", "עברית"], ["az-AZ", "Azərbaycan"],
+];
+
+/** Best default for the speech recogniser: the user's saved choice, else a Turkish or matching browser locale. */
+export function defaultVoiceLang(saved, navigatorLanguage) {
+  if (saved && VOICE_LANGS.some(([c]) => c === saved)) return saved;
+  const nav = (navigatorLanguage || "en-US");
+  const exact = VOICE_LANGS.find(([c]) => c.toLowerCase() === nav.toLowerCase());
+  if (exact) return exact[0];
+  const prefix = VOICE_LANGS.find(([c]) => c.split("-")[0] === nav.split("-")[0]);
+  return prefix ? prefix[0] : "en-US";
+}
+
 /* Pure logic for CV Studio web: no DOM, no network. Tested with node:test. */
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -66,7 +85,7 @@ export function extractJSON(text) {
 
 export const SYSTEM_PARSE = `You convert CV/résumé text into JSON. Reply with ONLY a JSON object matching this shape, no prose, no markdown fences:\n${SCHEMA_DOC}\nRules: keep the original language; keep every fact, date, number and name exactly; never invent anything; if a field is unknown use "" or []; put unlabelled contact lines into basics.links.`;
 
-export const SYSTEM_EDIT = `You edit a CV stored as JSON. You receive the current JSON and an instruction. Reply with ONLY a JSON object of the form {"cv": <the complete updated CV in the same shape>, "note": "<one short sentence saying what you changed, in the user's language>"} — no prose, no markdown fences. Rules: change only what the instruction requires; never invent employers, dates, metrics or credentials; keep the person's language unless told to translate; when asked to shorten, cut the weakest content first; keep order stable unless asked to reorder. If the instruction is not about the CV, return the CV unchanged and explain in "note".`;
+export const SYSTEM_EDIT = `You edit a CV stored as JSON. You receive the current JSON and an instruction. Reply with ONLY a JSON object of the form {"cv": <the complete updated CV in the same shape>, "note": "<one short sentence saying what you changed, in the user's language>"} — no prose, no markdown fences. Rules: change only what the instruction requires; never invent employers, dates, metrics or credentials; keep the person's language unless told to translate; when asked to shorten, cut the weakest content first; keep order stable unless asked to reorder. The instruction may be a speech-to-text transcript in any language, possibly with recognition errors, mixed languages or missing punctuation: infer the intent and act on it. If the instruction is not about the CV, return the CV unchanged and explain in "note".`;
 
 /** Fill in a field by dotted path; list-ish fields are split from text. Mutates and returns cv. */
 export function applyField(cv, path, value) {

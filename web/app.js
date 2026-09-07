@@ -1,5 +1,5 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
-import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, download, extractJSON, normalize, plainText, renderATS, renderStyled } from "./core.js";
+import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, VOICE_LANGS, applyField, defaultVoiceLang, download, extractJSON, normalize, plainText, renderATS, renderStyled } from "./core.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
 
@@ -121,20 +121,60 @@ async function readFile(file) {
 /* ───────────────────────── voice ───────────────────────── */
 
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognizer = null, listening = false;
+let recognizer = null, recorder = null, listening = false;
+const micStatus = (t) => { $("#mic-status").textContent = t; };
+const setLive = (on) => { listening = on; $("#btn-mic").classList.toggle("live", on); };
+
+for (const [code, name] of VOICE_LANGS) { const o = document.createElement("option"); o.value = code; o.textContent = name; $("#voice-lang").appendChild(o); }
+$("#voice-lang").value = defaultVoiceLang(settings.lang, navigator.language);
+$("#voice-lang").onchange = (e) => { settings.lang = e.target.value; localStorage.setItem("cvstudio.settings", JSON.stringify(settings)); };
 
 function toggleMic() {
-  if (!Recognition) { $("#mic-status").textContent = "Voice input needs Chrome or Edge."; return; }
-  if (listening) { recognizer.stop(); return; }
+  if (listening) { if (recognizer) recognizer.stop(); if (recorder && recorder.state === "recording") recorder.stop(); return; }
+  if (settings.engine === "whisper") return startWhisper();
+  return startBrowser();
+}
+
+/* Engine 1: the browser's recogniser. Instant, but it needs to be told the language. */
+function startBrowser() {
+  if (!Recognition) { micStatus("This browser has no speech recognition — pick Whisper in ⚙ settings, or use Chrome/Edge."); return; }
   recognizer = new Recognition();
-  recognizer.lang = settings.lang || navigator.language || "en-US";
-  recognizer.interimResults = true; recognizer.continuous = false;
+  recognizer.lang = $("#voice-lang").value;
+  recognizer.interimResults = true; recognizer.continuous = false; recognizer.maxAlternatives = 1;
   const base = $("#ask").value ? $("#ask").value.trim() + " " : "";
-  recognizer.onstart = () => { listening = true; $("#btn-mic").classList.add("live"); $("#mic-status").textContent = "Listening (" + recognizer.lang + ")… click again to stop."; };
+  recognizer.onstart = () => { setLive(true); micStatus(`Listening in ${$("#voice-lang").selectedOptions[0].textContent}… click again to stop.`); };
   recognizer.onresult = (e) => { let t = ""; for (const r of e.results) t += r[0].transcript; $("#ask").value = base + t; };
-  recognizer.onerror = (e) => { $("#mic-status").textContent = e.error === "not-allowed" ? "Microphone blocked — allow it in the address bar." : "Voice error: " + e.error; };
-  recognizer.onend = () => { listening = false; $("#btn-mic").classList.remove("live"); if ($("#ask").value.trim()) $("#mic-status").textContent = "Check the text, then Send."; else $("#mic-status").textContent = ""; $("#ask").focus(); };
+  recognizer.onerror = (e) => micStatus(e.error === "not-allowed" ? "Microphone blocked — allow it in the address bar." : e.error === "no-speech" ? "Heard nothing. Try again closer to the mic." : "Voice error: " + e.error);
+  recognizer.onend = () => { setLive(false); micStatus($("#ask").value.trim() ? "Check the text, then Send (Enter)." : ""); $("#ask").focus(); };
   recognizer.start();
+}
+
+/* Engine 2: Whisper through the user's OpenAI key. Detects the language itself; handles mixed languages. */
+async function startWhisper() {
+  const key = settings.sttkey || (settings.provider === "openai" ? settings.apikey : "");
+  if (!key) { micStatus("Whisper needs an OpenAI key — add it in ⚙ settings."); return; }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch { micStatus("Microphone blocked — allow it in the address bar."); return; }
+  const chunks = [];
+  recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm" });
+  recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  recorder.onstop = async () => {
+    stream.getTracks().forEach((t) => t.stop()); setLive(false); micStatus("Transcribing…");
+    try {
+      const form = new FormData();
+      form.append("file", new Blob(chunks, { type: recorder.mimeType }), "speech.webm");
+      form.append("model", "whisper-1");
+      form.append("prompt", "Instruction for editing a CV. May be Turkish, English or another language.");
+      const r = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: "Bearer " + key }, body: form });
+      if (!r.ok) throw new Error(`Whisper returned ${r.status}`);
+      const text = (await r.json()).text || "";
+      $("#ask").value = ($("#ask").value ? $("#ask").value.trim() + " " : "") + text.trim();
+      micStatus(text.trim() ? "Check the text, then Send (Enter)." : "Heard nothing.");
+    } catch (e) { micStatus(String(e.message || e)); }
+    $("#ask").focus();
+  };
+  recorder.start(); setLive(true); micStatus("Recording… click again to stop.");
 }
 
 /* ───────────────────────── form editor ───────────────────────── */
@@ -223,10 +263,10 @@ $("#btn-txt").onclick = () => download(fileBase() + ".txt", plainText(state.cv))
 $("#btn-new").onclick = () => { if (confirm("Start over? This clears the CV and photo from this browser.")) { state.photo = null; $("#photo-toggle").checked = false; state.history = []; state.cv = EMPTY(); localStorage.removeItem("cvstudio.cv"); localStorage.removeItem("cvstudio.photo"); $("#messages").innerHTML = ""; renderForm(); renderPreview(); showLanding(); status(""); } };
 
 const dlg = $("#settings");
-const openSettings = () => { $("#provider").value = settings.provider || "anthropic"; $("#apikey").value = settings.apikey || ""; $("#model").value = settings.model || ""; $("#baseurl").value = settings.baseurl || ""; $("#lang").value = settings.lang || ""; $("#baseurl-row").hidden = $("#provider").value !== "openai"; dlg.showModal(); };
+const openSettings = () => { $("#provider").value = settings.provider || "anthropic"; $("#apikey").value = settings.apikey || ""; $("#model").value = settings.model || ""; $("#baseurl").value = settings.baseurl || ""; $("#engine").value = settings.engine || "browser"; $("#sttkey").value = settings.sttkey || ""; $("#baseurl-row").hidden = $("#provider").value !== "openai"; dlg.showModal(); };
 $("#btn-settings").onclick = openSettings; $("#btn-settings-landing").onclick = openSettings;
 $("#provider").onchange = (e) => { $("#baseurl-row").hidden = e.target.value !== "openai"; $("#model").placeholder = e.target.value === "openai" ? "gpt-4o-mini" : "claude-sonnet-5"; };
-$("#btn-save-settings").onclick = () => { Object.assign(settings, { provider: $("#provider").value, apikey: $("#apikey").value.trim(), model: $("#model").value.trim(), baseurl: $("#baseurl").value.trim(), lang: $("#lang").value.trim() }); localStorage.setItem("cvstudio.settings", JSON.stringify(settings)); };
+$("#btn-save-settings").onclick = () => { Object.assign(settings, { provider: $("#provider").value, apikey: $("#apikey").value.trim(), model: $("#model").value.trim(), baseurl: $("#baseurl").value.trim(), engine: $("#engine").value, sttkey: $("#sttkey").value.trim() }); localStorage.setItem("cvstudio.settings", JSON.stringify(settings)); };
 
 /* boot */
 const saved = localStorage.getItem("cvstudio.cv");

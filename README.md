@@ -33,7 +33,12 @@ It runs entirely in your browser. There is no server. Your CV is parsed locally,
         └──────────────── every change re-renders the preview ───────────┘
 ```
 
-**Voice** uses the browser's built-in speech recognition (Chrome, Edge). Press the mic, speak, review the text, press Send. Nothing is recorded or uploaded.
+**Voice** has two engines, chosen in settings:
+
+- *Browser recognition* (Chrome, Edge) — instant and free; pick the spoken language in the selector next to the mic (30 languages, Turkish and English included; the choice is remembered). Nothing is recorded or uploaded.
+- *Whisper* — records the clip and sends it to OpenAI's transcription API with your own key; detects the language automatically and copes with mixed Turkish/English. Better accuracy, one network call per utterance.
+
+Either way the transcript lands in the text box first. You read it, fix a word if needed, and press Enter — the model is told it may be reading a speech transcript with errors and to act on the intent. No speech recogniser is 100% accurate; the review step is what makes the workflow reliable.
 
 **The AI is constrained.** It receives the CV as JSON and returns JSON. It is instructed never to invent employers, dates, metrics or credentials, to change only what the instruction requires, and to say in one sentence what it changed. That sentence appears in the chat so you can check it against the preview.
 

@@ -93,3 +93,27 @@ test("dropping a saved JSON restores a CV", async ({ page }) => {
   await expect(page.locator("#workspace")).toBeVisible();
   await expect(page.frameLocator("#frame").locator(".name")).toHaveText("Kemal Test");
 });
+
+test("voice language picker is populated, remembers the choice, and Whisper without a key explains itself", async ({ page }) => {
+  await page.goto("/"); await page.click("#btn-sample");
+  const options = await page.locator("#voice-lang option").count();
+  expect(options).toBeGreaterThan(20);
+  await page.selectOption("#voice-lang", "de-DE");
+  await page.reload();
+  await expect(page.locator("#voice-lang")).toHaveValue("de-DE");
+
+  await page.evaluate(() => localStorage.setItem("cvstudio.settings", JSON.stringify({ engine: "whisper", provider: "anthropic", apikey: "k" })));
+  await page.reload();
+  await page.click("#btn-mic");
+  await expect(page.locator("#mic-status")).toContainText("Whisper needs an OpenAI key");
+});
+
+test("speech transcript with recognition noise still reaches the model and is applied", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => localStorage.setItem("cvstudio.settings", JSON.stringify({ provider: "anthropic", apikey: "k" })));
+  await page.reload(); await page.click("#btn-sample");
+  await page.fill("#ask", "özeti kısalt lütfen bir de unvanı staff yap");
+  await page.press("#ask", "Enter");
+  await expect(page.locator(".msg.user")).toContainText("özeti kısalt");
+  await expect(page.frameLocator("#frame").locator(".role")).toHaveText("Staff Backend Engineer");
+});
