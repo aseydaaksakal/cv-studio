@@ -1,6 +1,6 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
-import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, applyOps, download, extractJSON, looksDestructive, normalize, plainText, renderATS, renderStyled } from "./core.js";
-import { LOCAL_MODELS, LOCAL_WHISPER, availableLocalModels, hasWebGPU, localComplete, localTranscribe, ollamaModels, pickForBudget, probeModel } from "./engines.js";
+import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, applyOps, download, extractJSON, looksDestructive, normalize, plainText, renderATS, renderStyled, whisperLangName } from "./core.js";
+import { LOCAL_MODELS, LOCAL_WHISPER, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localWhisperId, ollamaModels, pickForBudget, probeModel } from "./engines.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
 
@@ -79,7 +79,7 @@ async function callModel(system, user) {
 async function parseWithAI(text) {
   status("Structuring with AI…");
   const cv = extractJSON(await callModel(SYSTEM_PARSE, text.slice(0, 40000)));
-  setCV(cv); showWorkspace(); status("");
+  setCV(cv, { record: false }); showWorkspace(); status("");
   const thin = ["experience", "education", "languages"].filter((k) => (state.cv[k] || []).length < 2);
   say("assistant", `Loaded ${state.cv.basics?.name || "your CV"}. Tell me what to change — type it or press the mic.`
     + (thin.length ? ` A small local model can drop detail: check ${thin.join(", ")} in the Fields tab, or pick a larger model in ⚙.` : " The Fields tab lets you edit anything by hand."));
@@ -118,7 +118,7 @@ async function editWithAI(instruction) {
 
 async function readFile(file) {
   const name = file.name.toLowerCase();
-  if (name.endsWith(".json")) { setCV(JSON.parse(await file.text())); showWorkspace(); say("assistant", "Loaded your saved CV. What should change?"); return; }
+  if (name.endsWith(".json")) { setCV(JSON.parse(await file.text()), { record: false }); showWorkspace(); say("assistant", "Loaded your saved CV. What should change?"); return; }
   let text;
   if (name.endsWith(".pdf")) {
     status("Reading PDF…");
@@ -141,7 +141,7 @@ async function readFile(file) {
   if (!text.trim()) throw new Error("No text found. Scanned PDFs need OCR first.");
   if (settings.provider !== "local" && !haveKey()) {
     // No key yet: open the workspace with the raw text in the summary so nothing is lost, and ask for a key.
-    setCV({ ...EMPTY(), summary: text.slice(0, 2000) }); showWorkspace();
+    setCV({ ...EMPTY(), summary: text.slice(0, 2000) }, { record: false }); showWorkspace();
     say("assistant", "I read the file, but structuring it needs an AI engine. Open ⚙ AI settings and either switch to the free in-browser model or add a key, then drop the file again.");
     return;
   }
@@ -184,7 +184,7 @@ function startBrowser() {
   recognizer.start();
 }
 
-/* Record, then hand the clip to a transcriber that detects the language itself. */
+/* Record, then hand the clip to a transcriber. Each one resolves with { text, language }; language is shown next to the mic when known. */
 async function startRecording(transcribe) {
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
@@ -195,9 +195,10 @@ async function startRecording(transcribe) {
   recorder.onstop = async () => {
     stream.getTracks().forEach((t) => t.stop()); setLive(false); micStatus("Transcribing…");
     try {
-      const text = await transcribe(new Blob(chunks, { type: recorder.mimeType }));
+      const { text, language } = await transcribe(new Blob(chunks, { type: recorder.mimeType }));
       $("#ask").value = text;
-      micStatus(text ? "Check the text, then press Enter." : "Heard nothing — try again closer to the mic.");
+      const heard = language ? `Heard ${whisperLangName(language)} · ` : "";
+      micStatus(text ? `${heard}Check the text, then press Enter.` : "Heard nothing — try again closer to the mic.");
     } catch (e) { micStatus(String(e.message || e)); }
     status(""); $("#ask").focus();
   };
@@ -205,7 +206,7 @@ async function startRecording(transcribe) {
 }
 
 async function transcribeLocally(blob) {
-  return localTranscribe(settings.localwhisper, blob, (msg, pct) => micStatus(pct ? `${msg} ${pct}%` : msg));
+  return localTranscribe(localWhisperId(settings.localwhisper), blob, (msg, pct) => micStatus(pct ? `${msg} ${pct}%` : msg));
 }
 
 async function transcribeWithDesktop(blob) {
@@ -217,7 +218,7 @@ async function transcribeWithDesktop(blob) {
   catch { throw new Error(`Cannot reach the desktop backend at ${base}. Start it with CV_STUDIO_CORS=https://aseydaaksakal.github.io (see README).`); }
   if (!r.ok) throw new Error(`Desktop backend returned ${r.status}`);
   const d = await r.json();
-  return (d.metin || d.ham || "").trim();
+  return { text: (d.metin || d.ham || "").trim(), language: d.dil || null };
 }
 
 async function transcribeWithAPI(blob) {
@@ -227,7 +228,7 @@ async function transcribeWithAPI(blob) {
   form.append("file", blob, "speech.webm"); form.append("model", "whisper-1");
   const r = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: "Bearer " + key }, body: form });
   if (!r.ok) throw new Error(`Whisper API returned ${r.status}`);
-  return ((await r.json()).text || "").trim();
+  return { text: ((await r.json()).text || "").trim(), language: null };
 }
 
 /* ───────────────────────── form editor ───────────────────────── */
@@ -295,7 +296,7 @@ $("#file").onchange = (e) => e.target.files[0] && readFile(e.target.files[0]).ca
 ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
 ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
 drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) readFile(f).catch((err) => status(err.message, true)); });
-$("#btn-sample").onclick = () => { setCV(structuredClone(SAMPLE)); showWorkspace(); say("assistant", "This is a sample CV for a fictional person. Try: \"Add a project called ledger-viz\", or press a quick action."); };
+$("#btn-sample").onclick = () => { setCV(structuredClone(SAMPLE), { record: false }); showWorkspace(); say("assistant", "This is a sample CV for a fictional person. Try: \"Add a project called ledger-viz\", or press a quick action."); };
 
 $("#composer").addEventListener("submit", (e) => { e.preventDefault(); const q = $("#ask").value.trim(); if (!q) return; $("#ask").value = ""; editWithAI(q); });
 $("#ask").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#composer").requestSubmit(); } });

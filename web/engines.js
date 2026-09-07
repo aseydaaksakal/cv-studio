@@ -8,6 +8,8 @@
  * edition's local Ollama + faster-whisper.
  */
 
+import { pickLanguage, toMono } from "./core.js";
+
 /** Fallback list, used only when the real catalogue cannot be fetched. */
 export const LOCAL_MODELS = [
   ["Qwen2.5-1.5B-Instruct-q4f16_1-MLC", "Qwen 2.5 1.5B — ~1.1 GB · edits only, parsing loses detail"],
@@ -59,11 +61,22 @@ export const LOCAL_WHISPER = [
   ["onnx-community/whisper-small", "Whisper small — ~250 MB, good multilingual (default)"],
   ["onnx-community/whisper-large-v3-turbo", "Whisper large-v3-turbo — ~800 MB, best accuracy, needs a GPU"],
 ];
+export const localWhisperId = (id) => (LOCAL_WHISPER.some(([m]) => m === id) ? id : LOCAL_WHISPER[1][0]);
 
 const WEBLLM_URL = "https://esm.run/@mlc-ai/web-llm@0.2.79";
 const TRANSFORMERS_URL = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.2";
 
 export function hasWebGPU() { return typeof navigator !== "undefined" && "gpu" in navigator; }
+
+/* navigator.gpu can exist while the machine has no adapter to give (headless browsers, blocklisted drivers).
+   Asking for the adapter is the only honest test, and it is asynchronous, so the answer is cached. */
+let adapterOk = null;
+export async function webgpuUsable() {
+  if (adapterOk !== null) return adapterOk;
+  if (!hasWebGPU()) return (adapterOk = false);
+  try { adapterOk = Boolean(await navigator.gpu.requestAdapter()); } catch { adapterOk = false; }
+  return adapterOk;
+}
 
 /* ───────── text model ───────── */
 
@@ -103,21 +116,30 @@ export async function localComplete(model, system, user, onProgress) {
 
 /* ───────── speech model ───────── */
 
-let transcriber = null, transcriberModel = null, transcriberLoading = null;
+let transcriber = null, transcriberModel = null, transcriberLoading = null, tf = null;
 
 export async function localTranscriber(model, onProgress = () => {}) {
   if (transcriber && transcriberModel === model) return transcriber;
   if (transcriberLoading) await transcriberLoading;
   if (transcriber && transcriberModel === model) return transcriber;
   transcriberLoading = (async () => {
-    const { pipeline, env } = await import(TRANSFORMERS_URL);
+    tf = await import(TRANSFORMERS_URL);
+    const { pipeline, env } = tf;
     env.allowLocalModels = false;
     onProgress("Loading Whisper (first time downloads it, then it is cached)…", 0);
-    const device = hasWebGPU() ? "webgpu" : "wasm";
-    transcriber = await pipeline("automatic-speech-recognition", model, {
-      device, dtype: device === "webgpu" ? { encoder_model: "fp32", decoder_model_merged: "q4" } : "q8",
-      progress_callback: (p) => { if (p.status === "progress") onProgress(`Loading Whisper… ${p.file || ""}`, Math.round(p.progress || 0)); },
-    });
+    const progress_callback = (p) => { if (p.status === "progress") onProgress(`Loading Whisper… ${p.file || ""}`, Math.round(p.progress || 0)); };
+    const onGPU = { device: "webgpu", dtype: { encoder_model: "fp32", decoder_model_merged: "q4" }, progress_callback };
+    const onCPU = { device: "wasm", dtype: "q8", progress_callback };
+    /* Ask for the adapter before choosing, so a machine without one downloads the CPU build only.
+       The backend can still fail after that, so the CPU build stays a fallback as well as an else branch. */
+    const gpu = await webgpuUsable();
+    try {
+      transcriber = await pipeline("automatic-speech-recognition", model, gpu ? onGPU : onCPU);
+    } catch (e) {
+      if (!gpu) throw e;
+      onProgress("No usable GPU — loading Whisper for the processor instead…", 0);
+      transcriber = await pipeline("automatic-speech-recognition", model, onCPU);
+    }
     transcriberModel = model;
   })();
   try { await transcriberLoading; } finally { transcriberLoading = null; }
@@ -127,20 +149,45 @@ export async function localTranscriber(model, onProgress = () => {}) {
 /** Decode a recorded blob to 16 kHz mono Float32, which is what Whisper expects. */
 export async function blobToPCM(blob) {
   const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-  const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
-  const data = buf.numberOfChannels > 1
-    ? buf.getChannelData(0).map((v, i) => (v + buf.getChannelData(1)[i]) / 2)
-    : buf.getChannelData(0);
-  await ctx.close();
-  return data;
+  try {
+    const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+    const channels = []; for (let c = 0; c < buf.numberOfChannels; c++) channels.push(buf.getChannelData(c));
+    return toMono(channels);
+  } finally { ctx.close(); }
 }
 
-/** Transcribe a recording; the language is detected by the model. */
+/**
+ * Whisper detects the spoken language itself, but transformers.js does not run that step (it defaults to English).
+ * So it is done here: run the decoder one token past <|startoftranscript|> and read which language token scores
+ * highest. Returns a Whisper code ("tr", "en", …) or null when the loaded model cannot tell (stubs, old builds).
+ */
+export async function detectLanguage(t, pcm) {
+  const gc = t?.model?.generation_config;
+  if (!gc?.lang_to_id || !tf?.LogitsProcessor || !t.processor) return null;
+  class LanguageProbe extends tf.LogitsProcessor {
+    _call(input_ids, logits) { this.detected = pickLanguage(logits[0].data, gc.lang_to_id); return logits; }
+  }
+  const probe = new LanguageProbe();
+  const list = new tf.LogitsProcessorList(); list.push(probe);
+  const feats = await t.processor(pcm);
+  await t.model.generate({ inputs: feats.input_features, decoder_input_ids: [gc.decoder_start_token_id], max_new_tokens: 1, logits_processor: list });
+  return probe.detected || null;
+}
+
+/** Transcribe a recording. Returns { text, language }; language is detected from the audio, null if unknown. */
 export async function localTranscribe(model, blob, onProgress) {
   const t = await localTranscriber(model, onProgress);
   const pcm = await blobToPCM(blob);
-  const out = await t(pcm, { task: "transcribe", chunk_length_s: 30, return_timestamps: false });
-  return (Array.isArray(out) ? out.map((o) => o.text).join(" ") : out.text || "").trim();
+  /* Detection is a bonus: if it fails, transcribe anyway rather than losing the recording.
+     Both steps report progress, because on a processor they take long enough to look frozen otherwise. */
+  let language = null;
+  onProgress?.("Working out which language you spoke…", 0);
+  try { language = await detectLanguage(t, pcm); } catch { language = null; }
+  onProgress?.("Transcribing…", 0);
+  const long = pcm.length > 16000 * 30;
+  const out = await t(pcm, { task: "transcribe", ...(language ? { language } : {}), ...(long ? { chunk_length_s: 30, stride_length_s: 5 } : {}), return_timestamps: false });
+  const text = (Array.isArray(out) ? out.map((o) => o.text).join(" ") : out.text || "").trim();
+  return { text, language };
 }
 
 

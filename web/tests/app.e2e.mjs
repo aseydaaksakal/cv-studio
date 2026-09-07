@@ -179,6 +179,13 @@ test("a cloud engine with a key edits through the mocked endpoint", async ({ pag
 
 /* ───────── voice ───────── */
 
+test("no language picker beside the mic: the engine detects the language itself", async ({ page }) => {
+  await openSample(page);
+  await expect(page.locator("#btn-mic")).toBeVisible();
+  await expect(page.locator("#composer select")).toHaveCount(0);
+  await expect(page.locator("#btn-mic")).toHaveAttribute("title", /any language/);
+});
+
 test("mic: record, transcribe locally, transcript lands in the box, Enter applies it", async ({ page, context }) => {
   await context.grantPermissions(["microphone"]);
   await openSample(page);
@@ -188,9 +195,41 @@ test("mic: record, transcribe locally, transcript lands in the box, Enter applie
   await page.click("#btn-mic");
   await expect(page.locator("#ask")).toHaveValue("özeti kısalt lütfen");
   await expect(page.locator("#mic-status")).toContainText("press Enter");
+  await expect(page.locator("#mic-status")).not.toContainText("Heard"); // the stubbed model cannot tell the language
   await page.press("#ask", "Enter");
   await expect(page.locator(".msg.user")).toHaveText("özeti kısalt lütfen");
   await expect(page.frameLocator("#frame").locator(".name")).toHaveText("Elif Demir-Yılmaz");
+});
+
+/* A stub that records which backend each pipeline() asked for, and can be told to fail for one of them. */
+const RECORDING_TRANSFORMERS = (failOn) => `export const env = {};
+export async function pipeline(task, model, opts) {
+  (window.__devices ??= []).push(opts?.device);
+  if (opts?.device === ${JSON.stringify(failOn)}) throw new Error("no available backend found. ERR: [webgpu] Error: Failed to get GPU adapter.");
+  return async () => ({ text: " özeti kısalt lütfen " });
+}`;
+
+test("voice: no GPU adapter means the processor build is the only one downloaded", async ({ page, context }) => {
+  await context.grantPermissions(["microphone"]);
+  /* navigator.gpu exists (see beforeEach) but hands out no adapter — headless Chromium, and any blocklisted driver. */
+  await page.addInitScript(() => { Object.defineProperty(navigator, "gpu", { value: { requestAdapter: async () => null }, configurable: true }); });
+  await page.route(/cdn\.jsdelivr\.net\/npm\/@huggingface\/transformers/, (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: RECORDING_TRANSFORMERS("webgpu") }));
+  await openSample(page);
+  await page.click("#btn-mic"); await page.waitForTimeout(400); await page.click("#btn-mic");
+  await expect(page.locator("#ask")).toHaveValue("özeti kısalt lütfen");
+  expect(await page.evaluate(() => window.__devices)).toEqual(["wasm"]);
+});
+
+test("voice: an adapter that turns out unusable still falls back to the processor", async ({ page, context }) => {
+  await context.grantPermissions(["microphone"]);
+  /* The adapter is handed out, so WebGPU is tried, but creating the backend fails anyway. */
+  await page.addInitScript(() => { Object.defineProperty(navigator, "gpu", { value: { requestAdapter: async () => ({}) }, configurable: true }); });
+  await page.route(/cdn\.jsdelivr\.net\/npm\/@huggingface\/transformers/, (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: RECORDING_TRANSFORMERS("webgpu") }));
+  await openSample(page);
+  await page.click("#btn-mic"); await page.waitForTimeout(400); await page.click("#btn-mic");
+  await expect(page.locator("#ask")).toHaveValue("özeti kısalt lütfen");
+  await expect(page.locator("#mic-status")).toContainText("press Enter");
+  expect(await page.evaluate(() => window.__devices)).toEqual(["webgpu", "wasm"]);
 });
 
 /* ───────── settings, files, persistence ───────── */
@@ -206,6 +245,15 @@ test("settings default to the free in-browser engines and hide the key fields", 
   await expect(page.locator("#ollama-row")).toBeVisible();
   await page.selectOption("#provider", "anthropic");
   await expect(page.locator("#apikey-row")).toBeVisible();
+  await expect(page.locator("#localwhisper")).toHaveValue("onnx-community/whisper-small");
+  await expect(page.locator("#localwhisper-row")).toBeVisible();
+  await expect(page.locator("#sttkey-row")).toBeHidden();
+  await page.selectOption("#engine", "whisper");
+  await expect(page.locator("#sttkey-row")).toBeVisible();
+  await expect(page.locator("#localwhisper-row")).toBeHidden();
+  await page.selectOption("#engine", "local"); await page.selectOption("#localwhisper", "onnx-community/whisper-base");
+  await page.click("#btn-save-settings");
+  expect(JSON.parse(await page.evaluate(() => localStorage.getItem("cvstudio.settings")))).toMatchObject({ engine: "local", localwhisper: "onnx-community/whisper-base" });
 });
 
 test("the fields tab edits update the preview live", async ({ page }) => {

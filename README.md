@@ -43,7 +43,7 @@ Three things protect you from a small model getting it wrong:
 - **Nothing is claimed that did not happen.** If no operation could be applied, you get an error naming what the model asked for — never a cheerful "done" over an unchanged CV.
 - **Destructive replies are refused.** A reply that would erase most of the CV is rejected unless you asked to clear it.
 
-**Voice.** Press the mic, speak in any language, press it again. Whisper detects the language itself — Turkish, English, or both in one sentence. The transcript lands in the box; you glance at it and press Enter.
+**Voice.** Press the mic, speak in any language, press it again. There is no language picker: the spoken language is detected from the audio itself. Transformers.js does not run Whisper's detection step (it would default to English), so the app does it: the decoder is run one token past `<|startoftranscript|>` and the highest-scoring language token wins, then the clip is transcribed in that language. Mixed Turkish/English works. The detected language is shown next to the mic ("Heard Türkçe"), the transcript lands in the box, you glance at it and press Enter. Whisper uses WebGPU when the browser really has a usable adapter and falls back to the processor when it does not, so voice works on machines without a GPU.
 
 ## Where the model runs
 
@@ -133,9 +133,10 @@ The desktop edition keeps content generation out of the model entirely: the mode
 The web edition is tested at two levels, and CI runs both on every push:
 
 - **Unit** (`web/tests/core.test.mjs`, node:test): normalisation, JSON extraction, field editing, **the model grader** (JSON, operations, exact result, no collateral change, unreachable model), **path repair** (`name` → `basics.name`, `experience[1].title`, aliases), **the operation engine** (set/delete/append/insert/move, malformed operations skipped and reported), **the destructive-edit guard**, HTML escaping, every template, plain-text export.
-- **End-to-end** (`web/tests/app.e2e.mjs`, Playwright, real Chromium with a fake microphone): landing → sample → workspace; template switching; keyless in-browser engine editing (model stubbed at the module boundary); cloud engine without a key; cloud engine against a mocked endpoint with the change note and Undo; a targeted delete removing only what was named; a wiping reply being refused; an instruction the model cannot act on; the toolbar upload; the left/right layout; the model test button passing and failing; the custom model field; quick actions; **mic → recording → local transcription → Enter → edit applied**; Fields editing; persistence; New CV; exports; dropping a saved JSON.
+- **Voice, end-to-end** (`web/tests/voice-en.e2e.mjs`, `web/tests/voice-tr.e2e.mjs`, Playwright): Chromium is started with a fake microphone that plays a synthesised WAV (`web/tests/fixtures/`, one English and one Turkish instruction made with espeak-ng), the default Whisper model is downloaded and run in the page on CPU, the language must be detected correctly ("Heard English", "Heard Türkçe"), the transcript must land in the composer, and Enter must send it to the mocked model and update the preview.
+- **End-to-end** (`web/tests/app.e2e.mjs`, Playwright, real Chromium with a fake microphone): landing → sample → workspace; template switching; keyless in-browser engine editing (model stubbed at the module boundary); cloud engine without a key; cloud engine against a mocked endpoint with the change note and Undo; a targeted delete removing only what was named; a wiping reply being refused; an instruction the model cannot act on; the toolbar upload; the left/right layout;, the WebGPU adapter probe and its processor fallback; the model test button passing and failing; the custom model field; quick actions; **mic → recording → local transcription → Enter → edit applied**; Fields editing; persistence; New CV; exports; dropping a saved JSON.
 
-What automation cannot cover and is checked by hand on each release: real model downloads and WebGPU on actual hardware, transcription accuracy, the print-to-PDF dialog, real PDF/DOCX parsing on a handful of layouts.
+What automation cannot cover and is checked by hand on each release: WebGPU on actual hardware, transcription accuracy on a real microphone and voice, the print-to-PDF dialog, real PDF/DOCX parsing on a handful of layouts.
 
 ```bash
 cd web
