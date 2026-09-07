@@ -213,8 +213,9 @@ def hazirla(oid=""):
     oid = str(oid or aktif())
     if not var(oid):
         return ""
-    if _baglanan != oid:
-        baglan(oid)
+    # Her istekte yeniden bagla: --reload sonrasi ya da bir test modul
+    # degiskenlerini bozdugunda bellekteki "zaten bagli" bilgisi yalan soyler.
+    baglan(oid)
     return oid
 
 
