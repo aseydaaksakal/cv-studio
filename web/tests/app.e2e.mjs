@@ -203,7 +203,8 @@ test("mic: record, transcribe locally, transcript lands in the box, Enter applie
   await page.click("#btn-mic");
   await expect(page.locator("#ask")).toHaveValue("özeti kısalt lütfen");
   await expect(page.locator("#mic-status")).toContainText("press Enter");
-  await expect(page.locator("#mic-status")).not.toContainText("Heard"); // the stubbed model cannot tell the language
+  await expect(page.locator("#mic-status")).toContainText("via Whisper"); // engine named
+  await expect(page.locator("#mic-status")).not.toContainText("Turkish"); // the stubbed model reports no language
   await page.press("#ask", "Enter");
   await expect(page.locator(".msg.user")).toHaveText("özeti kısalt lütfen");
   await expect(page.frameLocator("#frame").locator(".name")).toHaveText("Elif Demir-Yılmaz");
