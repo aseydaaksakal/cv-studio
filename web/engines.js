@@ -77,11 +77,18 @@ export async function localTranscriber(model, onProgress = () => {}) {
     const { pipeline, env } = tf;
     env.allowLocalModels = false;
     onProgress("Loading Whisper (first time downloads it, then it is cached)…", 0);
-    const device = hasWebGPU() ? "webgpu" : "wasm";
-    transcriber = await pipeline("automatic-speech-recognition", model, {
-      device, dtype: device === "webgpu" ? { encoder_model: "fp32", decoder_model_merged: "q4" } : "q8",
-      progress_callback: (p) => { if (p.status === "progress") onProgress(`Loading Whisper… ${p.file || ""}`, Math.round(p.progress || 0)); },
-    });
+    const progress_callback = (p) => { if (p.status === "progress") onProgress(`Loading Whisper… ${p.file || ""}`, Math.round(p.progress || 0)); };
+    const onGPU = { device: "webgpu", dtype: { encoder_model: "fp32", decoder_model_merged: "q4" }, progress_callback };
+    const onCPU = { device: "wasm", dtype: "q8", progress_callback };
+    /* navigator.gpu can exist while no adapter is actually available (headless browsers, blocklisted drivers),
+       and that only fails once the backend is created. So the CPU build is a fallback, not just an else branch. */
+    try {
+      transcriber = await pipeline("automatic-speech-recognition", model, hasWebGPU() ? onGPU : onCPU);
+    } catch (e) {
+      if (!hasWebGPU()) throw e;
+      onProgress("No usable GPU — loading Whisper for the processor instead…", 0);
+      transcriber = await pipeline("automatic-speech-recognition", model, onCPU);
+    }
     transcriberModel = model;
   })();
   try { await transcriberLoading; } finally { transcriberLoading = null; }
@@ -120,7 +127,9 @@ export async function detectLanguage(t, pcm) {
 export async function localTranscribe(model, blob, onProgress) {
   const t = await localTranscriber(model, onProgress);
   const pcm = await blobToPCM(blob);
-  const language = await detectLanguage(t, pcm);
+  /* Detection is a bonus: if it fails, transcribe anyway rather than losing the recording. */
+  let language = null;
+  try { language = await detectLanguage(t, pcm); } catch { language = null; }
   const long = pcm.length > 16000 * 30;
   const out = await t(pcm, { task: "transcribe", ...(language ? { language } : {}), ...(long ? { chunk_length_s: 30, stride_length_s: 5 } : {}), return_timestamps: false });
   const text = (Array.isArray(out) ? out.map((o) => o.text).join(" ") : out.text || "").trim();

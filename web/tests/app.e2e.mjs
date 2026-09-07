@@ -175,6 +175,21 @@ test("mic: record, auto-transcribe locally, transcript lands in the box, Enter a
   await expect(page.frameLocator("#frame").locator(".name")).toHaveText("Elif Demir-Yılmaz");
 });
 
+test("voice: a browser that reports WebGPU but has no usable adapter falls back to the processor", async ({ page, context }) => {
+  await context.grantPermissions(["microphone"]);
+  /* navigator.gpu is defined (see beforeEach) but creating the GPU backend throws, as it does in headless Chromium. */
+  await page.route(/cdn\.jsdelivr\.net\/npm\/@huggingface\/transformers/, (route) => route.fulfill({ status: 200, contentType: "text/javascript",
+    body: `export const env = {};
+export async function pipeline(task, model, opts) {
+  if (opts?.device === "webgpu") throw new Error("no available backend found. ERR: [webgpu] Error: Failed to get GPU adapter.");
+  return async () => ({ text: " özeti kısalt lütfen " });
+}` }));
+  await page.goto("/"); await page.click("#btn-sample");
+  await page.click("#btn-mic"); await page.waitForTimeout(400); await page.click("#btn-mic");
+  await expect(page.locator("#ask")).toHaveValue("özeti kısalt lütfen");
+  await expect(page.locator("#mic-status")).toContainText("press Enter");
+});
+
 test("a deleting instruction removes only what was named", async ({ page }) => {
   await page.route(/esm\.run\/@mlc-ai\/web-llm/, (route) => route.fulfill({ status: 200, contentType: "text/javascript",
     body: `export async function CreateMLCEngine(m,o){o?.initProgressCallback?.({text:"s",progress:1});return{chat:{completions:{create:async()=>({choices:[{message:{content:${JSON.stringify(JSON.stringify({ ops: [{ op: "set", path: "basics.name", value: "" }], note: "Adı sildim." }))} }}]})}}};}` }));

@@ -37,7 +37,7 @@ It runs entirely in your browser. There is no server and, by default, **no API k
 
 Speak or type an instruction. The model does not rewrite the CV; it emits **small operations** — `set basics.title`, `delete experience.1`, `append projects` — which the app applies itself. That is why *"delete the name Elif Demir"* removes the name and nothing else. If a reply would destroy most of the CV without you asking, it is refused and the CV stays as it was.
 
-**Voice.** Press the mic, speak in any language, press it again. There is no language picker: the spoken language is detected from the audio itself. Transformers.js does not run Whisper's detection step (it would default to English), so the app does it: the decoder is run one token past `<|startoftranscript|>` and the highest-scoring language token wins, then the clip is transcribed in that language. Mixed Turkish/English works. The detected language is shown next to the mic ("Heard Türkçe"), the transcript lands in the box, you glance at it and press Enter.
+**Voice.** Press the mic, speak in any language, press it again. There is no language picker: the spoken language is detected from the audio itself. Transformers.js does not run Whisper's detection step (it would default to English), so the app does it: the decoder is run one token past `<|startoftranscript|>` and the highest-scoring language token wins, then the clip is transcribed in that language. Mixed Turkish/English works. The detected language is shown next to the mic ("Heard Türkçe"), the transcript lands in the box, you glance at it and press Enter. Whisper uses WebGPU when the browser really has a usable adapter and falls back to the processor when it does not, so voice works on machines without a GPU.
 
 ## Where the model runs
 
