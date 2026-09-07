@@ -3,64 +3,70 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CV Studio — edit your CV with AI, in your browser</title>
-<meta name="description" content="Upload a PDF or DOCX, edit every section, ask an AI to rewrite, tailor or translate it, export a polished PDF. Everything runs in your browser.">
+<title>CV Studio — edit your CV by talking to it</title>
+<meta name="description" content="Drop a PDF or DOCX. Then type or speak what you want changed. Everything runs in your browser with your own AI key.">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<header class="top">
-  <div class="brand">CV Studio <span class="tag">web</span></div>
-  <div class="top-actions">
-    <button id="btn-sample" class="ghost">Load sample</button>
-    <button id="btn-settings" class="ghost">AI settings</button>
-    <a class="ghost link" href="https://github.com/aseydaaksakal/cv-studio" target="_blank" rel="noopener">GitHub</a>
-  </div>
-</header>
 
-<main class="layout">
-  <!-- ───────── left: editor ───────── -->
-  <section class="pane editor">
-    <div class="card" id="upload-card">
-      <h2>1 · Start</h2>
-      <div class="drop" id="drop">
-        <input type="file" id="file" accept=".pdf,.docx,.json,.txt" hidden>
-        <p><strong>Drop a PDF, DOCX or JSON here</strong> or <button class="linkish" id="btn-browse">browse</button></p>
-        <p class="muted">Parsed in your browser. Nothing is uploaded anywhere.</p>
+<!-- ───────── landing: an empty page with one thing on it ───────── -->
+<section id="landing" class="landing">
+  <div class="drop big" id="drop">
+    <input type="file" id="file" accept=".pdf,.docx,.json,.txt" hidden>
+    <div class="drop-inner">
+      <div class="logo">CV Studio</div>
+      <p class="lead">Drop your CV here.</p>
+      <p class="muted">PDF, DOCX or a saved JSON. Or <button class="linkish" id="btn-browse">choose a file</button>.</p>
+      <p class="muted small">Read in your browser. Sent only to the AI provider you configure, with your own key.</p>
+      <div class="landing-actions">
+        <button id="btn-sample" class="ghost">Try with a sample</button>
+        <button id="btn-settings-landing" class="ghost">AI settings</button>
       </div>
-      <details>
-        <summary>…or paste the text of your CV</summary>
-        <textarea id="paste" rows="6" placeholder="Paste your CV text here"></textarea>
-        <button id="btn-parse-paste" class="primary small">Structure with AI</button>
-      </details>
-      <p class="status" id="status"></p>
     </div>
+  </div>
+  <p class="status" id="status-landing"></p>
+</section>
 
-    <div class="card" id="ai-card">
-      <h2>2 · Ask the AI</h2>
+<!-- ───────── workspace: chat on the left, the CV on the right ───────── -->
+<main id="workspace" class="workspace" hidden>
+  <aside class="side">
+    <header class="side-head">
+      <div class="brand">CV Studio</div>
+      <nav class="tabs">
+        <button class="tab active" data-tab="chat">Chat</button>
+        <button class="tab" data-tab="fields">Fields</button>
+      </nav>
+      <button id="btn-settings" class="icon" title="AI settings">⚙</button>
+    </header>
+
+    <section id="tab-chat" class="tab-panel active">
+      <div id="messages" class="messages"></div>
       <div class="chips">
         <button data-q="Tighten the summary to three sentences that lead with impact.">Sharper summary</button>
         <button data-q="Rewrite every experience bullet to start with a strong verb and include a measurable result where one exists. Do not invent numbers.">Stronger bullets</button>
         <button data-q="Make this ATS-friendly: plain wording, standard section names, no tables or symbols in text.">ATS-friendly</button>
         <button data-q="Cut content so it fits one A4 page without losing the strongest achievements.">Fit one page</button>
-        <button data-q="Translate the whole CV to English, keeping names and proper nouns.">To English</button>
-        <button data-q="Translate the whole CV to Turkish, keeping names and proper nouns.">Türkçeye çevir</button>
+        <button data-q="Translate the whole CV to English, keeping names and proper nouns.">English</button>
+        <button data-q="Translate the whole CV to Turkish, keeping names and proper nouns.">Türkçe</button>
       </div>
-      <textarea id="ask" rows="3" placeholder="e.g. Add a project called rag-eval under Projects. / Tailor this for the job description below: …"></textarea>
-      <div class="row">
-        <button id="btn-ask" class="primary">Apply</button>
-        <button id="btn-undo" class="ghost" disabled>Undo</button>
-        <span class="muted" id="ai-note">Needs an API key — open <b>AI settings</b>.</span>
-      </div>
-    </div>
+      <form id="composer" class="composer">
+        <textarea id="ask" rows="2" placeholder="Type what to change — or press the mic and say it. Enter sends, Shift+Enter is a new line."></textarea>
+        <div class="composer-row">
+          <button type="button" id="btn-mic" class="icon" title="Speak (Web Speech API)">🎙</button>
+          <span id="mic-status" class="muted small"></span>
+          <span class="spacer"></span>
+          <button type="button" id="btn-undo" class="ghost small" disabled>Undo</button>
+          <button type="submit" id="btn-ask" class="primary small">Send</button>
+        </div>
+      </form>
+    </section>
 
-    <div class="card">
-      <h2>3 · Edit by hand</h2>
+    <section id="tab-fields" class="tab-panel">
       <div id="form"></div>
-    </div>
-  </section>
+    </section>
+  </aside>
 
-  <!-- ───────── right: preview ───────── -->
-  <section class="pane preview">
+  <section class="stage">
     <div class="toolbar">
       <label>Template
         <select id="template">
@@ -72,20 +78,21 @@
       <label class="check"><input type="checkbox" id="photo-toggle"> Photo</label>
       <input type="file" id="photo-file" accept="image/*" hidden>
       <span class="spacer"></span>
-      <button id="btn-pdf" class="primary">Download PDF</button>
-      <button id="btn-json" class="ghost">Save JSON</button>
-      <button id="btn-txt" class="ghost">Plain text</button>
-      <button id="btn-clear" class="ghost danger">Clear</button>
+      <button id="btn-pdf" class="primary small">Download PDF</button>
+      <button id="btn-json" class="ghost small">Save JSON</button>
+      <button id="btn-txt" class="ghost small">Plain text</button>
+      <button id="btn-new" class="ghost small">New CV</button>
     </div>
     <iframe id="frame" title="CV preview"></iframe>
+    <p class="status stage-status" id="status"></p>
   </section>
 </main>
 
-<!-- ───────── settings dialog ───────── -->
+<!-- ───────── settings ───────── -->
 <dialog id="settings">
   <form method="dialog" class="dlg">
     <h2>AI settings</h2>
-    <p class="muted">Your key is stored only in this browser (localStorage) and sent only to the provider you pick. This site has no server.</p>
+    <p class="muted">Stored only in this browser. Sent only to the provider you pick. This site has no server.</p>
     <label>Provider
       <select id="provider">
         <option value="anthropic">Anthropic (Claude)</option>
@@ -95,6 +102,7 @@
     <label>API key <input type="password" id="apikey" placeholder="sk-…" autocomplete="off"></label>
     <label>Model <input type="text" id="model" placeholder="claude-sonnet-5"></label>
     <label id="baseurl-row" hidden>Base URL <input type="text" id="baseurl" placeholder="https://api.openai.com/v1"></label>
+    <label>Voice language <input type="text" id="lang" placeholder="auto (browser language), e.g. tr-TR or en-US"></label>
     <p class="muted">Get a key: <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a> · <a href="https://platform.openai.com/" target="_blank" rel="noopener">platform.openai.com</a></p>
     <div class="row end">
       <button value="cancel" class="ghost">Cancel</button>

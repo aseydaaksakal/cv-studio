@@ -1,54 +1,13 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
+import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, download, extractJSON, normalize, plainText, renderATS, renderStyled } from "./core.js";
+
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
-
-/* ───────────────────────── schema ───────────────────────── */
-
-const EMPTY = () => ({
-  basics: { name: "", title: "", location: "", phone: "", email: "", links: [] },
-  summary: "",
-  experience: [],
-  skills: [],
-  projects: [],
-  certifications: [],
-  education: [],
-  languages: [],
-});
-
-const SCHEMA_DOC = `{
-  "basics": {"name": "", "title": "", "location": "", "phone": "", "email": "", "links": ["github.com/x"]},
-  "summary": "2-4 sentences",
-  "experience": [{"title": "", "company": "", "location": "", "start": "Jan 2020", "end": "Present", "bullets": ["…"]}],
-  "skills": [{"group": "Core", "items": ["…"]}],
-  "projects": [{"name": "", "description": "", "link": ""}],
-  "certifications": [{"name": "", "issuer": "", "year": ""}],
-  "education": [{"degree": "", "school": "", "year": ""}],
-  "languages": [{"name": "", "level": ""}]
-}`;
-
-const SAMPLE = {
-  basics: { name: "Elif Demir", title: "Senior Backend Engineer", location: "Berlin, Germany", phone: "+49 30 000 0000", email: "elif@example.com", links: ["github.com/elifdemir", "linkedin.com/in/elifdemir"] },
-  summary: "Backend engineer with eight years building payment and logistics platforms. Comfortable owning a service from schema to on-call. Recently moved a monolith's checkout path onto event-driven services without a customer-visible incident.",
-  experience: [
-    { title: "Senior Backend Engineer", company: "Kargo Labs", location: "Berlin", start: "Mar 2021", end: "Present",
-      bullets: ["Led the split of the checkout monolith into 6 services (Go, Kafka); p99 latency 900ms → 210ms.", "Introduced contract tests and cut production incidents caused by API drift from 5/quarter to 0.", "Mentored four engineers; two promoted to senior."] },
-    { title: "Backend Engineer", company: "PayFlow", location: "Istanbul", start: "Jun 2017", end: "Feb 2021",
-      bullets: ["Built the reconciliation pipeline processing 2M transactions/day (Python, PostgreSQL).", "Reduced settlement report generation from 40 minutes to 90 seconds by moving to incremental aggregation."] },
-  ],
-  skills: [
-    { group: "Languages", items: ["Go", "Python", "SQL", "TypeScript"] },
-    { group: "Platform", items: ["Kubernetes", "Kafka", "PostgreSQL", "Redis", "AWS", "Terraform"] },
-  ],
-  projects: [{ name: "ledger-diff", description: "Open-source tool that diffs two ledgers and explains every discrepancy.", link: "github.com/elifdemir/ledger-diff" }],
-  certifications: [{ name: "AWS Solutions Architect – Associate", issuer: "Amazon Web Services", year: "2023" }],
-  education: [{ degree: "B.Sc. Computer Engineering", school: "Boğaziçi University", year: "2017" }],
-  languages: [{ name: "Turkish", level: "Native" }, { name: "English", level: "C1" }, { name: "German", level: "B1" }],
-};
 
 /* ───────────────────────── state ───────────────────────── */
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const state = { cv: EMPTY(), history: [], photo: null };
+const state = { cv: EMPTY(), history: [], photo: null, busy: false };
 const settings = JSON.parse(localStorage.getItem("cvstudio.settings") || "{}");
 
 function persist() {
@@ -61,27 +20,29 @@ function setCV(next, { record = true } = {}) {
   $("#btn-undo").disabled = state.history.length === 0;
   persist(); renderForm(); renderPreview();
 }
-function normalize(cv) {
-  const base = EMPTY();
-  const out = { ...base, ...(cv || {}) };
-  out.basics = { ...base.basics, ...(cv?.basics || {}) };
-  out.basics.links = Array.isArray(out.basics.links) ? out.basics.links.map(String) : [];
-  for (const k of ["experience", "skills", "projects", "certifications", "education", "languages"]) if (!Array.isArray(out[k])) out[k] = [];
-  out.experience = out.experience.map((e) => ({ title: "", company: "", location: "", start: "", end: "", ...e, bullets: Array.isArray(e.bullets) ? e.bullets.map(String) : [] }));
-  out.skills = out.skills.map((s) => ({ group: "", ...s, items: Array.isArray(s.items) ? s.items.map(String) : String(s.items || "").split(",").map((x) => x.trim()).filter(Boolean) }));
-  out.summary = String(out.summary || "");
-  return out;
+function status(msg, err = false) {
+  for (const id of ["#status", "#status-landing"]) { const el = $(id); el.textContent = msg; el.className = el.className.replace(" err", "") + (err ? " err" : ""); }
 }
-function status(msg, err = false) { const el = $("#status"); el.textContent = msg; el.className = "status" + (err ? " err" : ""); }
+function showWorkspace() { $("#landing").hidden = true; $("#workspace").hidden = false; }
+function showLanding() { $("#workspace").hidden = true; $("#landing").hidden = false; }
+
+/* ───────────────────────── chat ───────────────────────── */
+
+function say(role, text) {
+  const el = document.createElement("div");
+  el.className = "msg " + role;
+  el.innerHTML = esc(text).replace(/\n/g, "<br>");
+  $("#messages").appendChild(el);
+  el.scrollIntoView({ block: "end" });
+}
 
 /* ───────────────────────── AI ───────────────────────── */
 
-function haveKey() { return Boolean(settings.apikey); }
-function updateAiNote() { $("#ai-note").textContent = haveKey() ? `Using ${settings.provider === "openai" ? "OpenAI-compatible" : "Anthropic"} · ${settings.model || defaultModel()}` : "Needs an API key — open AI settings."; }
-function defaultModel() { return settings.provider === "openai" ? "gpt-4o-mini" : "claude-sonnet-5"; }
+const haveKey = () => Boolean(settings.apikey);
+const defaultModel = () => (settings.provider === "openai" ? "gpt-4o-mini" : "claude-sonnet-5");
 
 async function callModel(system, user) {
-  if (!haveKey()) throw new Error("Add an API key in AI settings first.");
+  if (!haveKey()) throw new Error("Add an API key first (⚙ AI settings).");
   const model = settings.model || defaultModel();
   if (settings.provider === "openai") {
     const base = (settings.baseurl || "https://api.openai.com/v1").replace(/\/$/, "");
@@ -98,36 +59,36 @@ async function callModel(system, user) {
     body: JSON.stringify({ model, max_tokens: 8000, system, messages: [{ role: "user", content: user }] }),
   });
   if (!r.ok) throw new Error(`Anthropic returned ${r.status}: ${(await r.text()).slice(0, 200)}`);
-  const data = await r.json();
-  return data.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+  return (await r.json()).content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
 }
-function extractJSON(text) {
-  const start = text.indexOf("{"); const end = text.lastIndexOf("}");
-  if (start < 0 || end < 0) throw new Error("The model did not return JSON.");
-  return JSON.parse(text.slice(start, end + 1));
-}
-
-const SYSTEM_PARSE = `You convert CV/résumé text into JSON. Reply with ONLY a JSON object matching this shape, no prose, no markdown fences:\n${SCHEMA_DOC}\nRules: keep the original language; keep every fact, date, number and name exactly; never invent anything; if a field is unknown use "" or []; put unlabelled contact lines into basics.links.`;
-const SYSTEM_EDIT = `You edit a CV stored as JSON. You receive the current JSON and an instruction. Apply the instruction and reply with ONLY the complete updated JSON object in the same shape, no prose, no markdown fences. Rules: change only what the instruction requires; never invent employers, dates, metrics or credentials; keep the person's language unless told to translate; when asked to shorten, cut the weakest content first; keep ids/order stable unless asked to reorder.`;
 
 async function parseWithAI(text) {
   status("Structuring with AI…");
   const cv = extractJSON(await callModel(SYSTEM_PARSE, text.slice(0, 40000)));
-  setCV(cv); status("Done. Review the sections on the left.");
-}
-async function editWithAI(instruction) {
-  const btn = $("#btn-ask"); btn.disabled = true; status("Applying…");
-  try {
-    const cv = extractJSON(await callModel(SYSTEM_EDIT, `CURRENT CV JSON:\n${JSON.stringify(state.cv)}\n\nINSTRUCTION:\n${instruction}`));
-    setCV(cv); status("Applied. Undo is available.");
-  } catch (e) { status(String(e.message || e), true); } finally { btn.disabled = false; }
+  setCV(cv); showWorkspace(); status("");
+  say("assistant", `Loaded ${cv.basics?.name || "your CV"}. Tell me what to change — type it or press the mic. The Fields tab lets you edit anything by hand.`);
 }
 
-/* ───────────────────────── input ───────────────────────── */
+async function editWithAI(instruction) {
+  if (state.busy) return;
+  state.busy = true; $("#btn-ask").disabled = true;
+  say("user", instruction);
+  const thinking = document.createElement("div"); thinking.className = "msg assistant thinking"; thinking.textContent = "Working…"; $("#messages").appendChild(thinking);
+  try {
+    const out = extractJSON(await callModel(SYSTEM_EDIT, `CURRENT CV JSON:\n${JSON.stringify(state.cv)}\n\nINSTRUCTION:\n${instruction}`));
+    const cv = out.cv && typeof out.cv === "object" ? out.cv : out;
+    setCV(cv);
+    thinking.remove(); say("assistant", out.note || "Done. Undo is available.");
+  } catch (e) {
+    thinking.remove(); say("error", String(e.message || e));
+  } finally { state.busy = false; $("#btn-ask").disabled = false; }
+}
+
+/* ───────────────────────── input files ───────────────────────── */
 
 async function readFile(file) {
   const name = file.name.toLowerCase();
-  if (name.endsWith(".json")) { setCV(JSON.parse(await file.text())); status("Loaded JSON."); return; }
+  if (name.endsWith(".json")) { setCV(JSON.parse(await file.text())); showWorkspace(); say("assistant", "Loaded your saved CV. What should change?"); return; }
   let text;
   if (name.endsWith(".pdf")) {
     status("Reading PDF…");
@@ -135,7 +96,7 @@ async function readFile(file) {
     const pages = [];
     for (let i = 1; i <= pdf.numPages; i++) {
       const content = await (await pdf.getPage(i)).getTextContent();
-      let line = "", lastY = null, out = [];
+      let line = "", lastY = null; const out = [];
       for (const it of content.items) {
         if (lastY !== null && Math.abs(it.transform[5] - lastY) > 2) { out.push(line); line = ""; }
         line += (line && !line.endsWith(" ") && !it.str.startsWith(" ") ? " " : "") + it.str; lastY = it.transform[5];
@@ -148,8 +109,32 @@ async function readFile(file) {
     text = (await window.mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })).value;
   } else { text = await file.text(); }
   if (!text.trim()) throw new Error("No text found. Scanned PDFs need OCR first.");
-  if (!haveKey()) { $("#paste").value = text; $("#paste").closest("details").open = true; status("Text extracted. Add an API key to structure it, or edit by hand below.", true); return; }
+  if (!haveKey()) {
+    // No key yet: open the workspace with the raw text in the summary so nothing is lost, and ask for a key.
+    setCV({ ...EMPTY(), summary: text.slice(0, 2000) }); showWorkspace();
+    say("assistant", "I read the file, but structuring it needs an AI key. Open ⚙ AI settings, add one, then drop the file again — or fill the Fields tab by hand.");
+    return;
+  }
   await parseWithAI(text);
+}
+
+/* ───────────────────────── voice ───────────────────────── */
+
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognizer = null, listening = false;
+
+function toggleMic() {
+  if (!Recognition) { $("#mic-status").textContent = "Voice input needs Chrome or Edge."; return; }
+  if (listening) { recognizer.stop(); return; }
+  recognizer = new Recognition();
+  recognizer.lang = settings.lang || navigator.language || "en-US";
+  recognizer.interimResults = true; recognizer.continuous = false;
+  const base = $("#ask").value ? $("#ask").value.trim() + " " : "";
+  recognizer.onstart = () => { listening = true; $("#btn-mic").classList.add("live"); $("#mic-status").textContent = "Listening (" + recognizer.lang + ")… click again to stop."; };
+  recognizer.onresult = (e) => { let t = ""; for (const r of e.results) t += r[0].transcript; $("#ask").value = base + t; };
+  recognizer.onerror = (e) => { $("#mic-status").textContent = e.error === "not-allowed" ? "Microphone blocked — allow it in the address bar." : "Voice error: " + e.error; };
+  recognizer.onend = () => { listening = false; $("#btn-mic").classList.remove("live"); if ($("#ask").value.trim()) $("#mic-status").textContent = "Check the text, then Send."; else $("#mic-status").textContent = ""; $("#ask").focus(); };
+  recognizer.start();
 }
 
 /* ───────────────────────── form editor ───────────────────────── */
@@ -174,17 +159,14 @@ function renderForm() {
   let h = `<div class="sec"><div class="sec-head"><h3>Basics</h3></div><div class="grid2">
     ${field("basics.name", "Name", b.name)}${field("basics.title", "Title", b.title)}
     ${field("basics.location", "Location", b.location)}${field("basics.phone", "Phone", b.phone)}
-    ${field("basics.email", "Email", b.email)}${field("basics.links", "Links (comma separated)", b.links.join(", "), "text")}
+    ${field("basics.email", "Email", b.email)}${field("basics.links", "Links (comma separated)", b.links.join(", "))}
   </div></div>`;
   h += `<div class="sec"><div class="sec-head"><h3>Summary</h3></div>${field("summary", "", cv.summary, "textarea")}</div>`;
   for (const key of ["experience", "skills", "projects", "certifications", "education", "languages"]) {
     h += `<div class="sec"><div class="sec-head"><h3>${LABELS[key]}</h3><button class="small ghost" data-add="${key}">+ Add</button></div>`;
     cv[key].forEach((item, i) => {
       h += `<div class="item"><div class="grid2">`;
-      for (const [k, label, kind] of FIELDS[key]) {
-        const val = kind === "list" ? item[k].join(", ") : item[k];
-        h += field(`${key}.${i}.${k}`, label, val, kind === "textarea" ? "textarea" : "text");
-      }
+      for (const [k, label, kind] of FIELDS[key]) h += field(`${key}.${i}.${k}`, label, kind === "list" ? item[k].join(", ") : item[k], kind === "textarea" ? "textarea" : "text");
       h += `</div>`;
       if (key === "experience") h += `<label>Bullets (one per line)<textarea data-path="experience.${i}.bullets" rows="3">${esc(item.bullets.join("\n"))}</textarea></label>`;
       h += `<div class="row"><button class="small ghost" data-move="${key}:${i}:-1">↑</button><button class="small ghost" data-move="${key}:${i}:1">↓</button><button class="small ghost danger" data-del="${key}:${i}">Remove</button></div></div>`;
@@ -193,20 +175,8 @@ function renderForm() {
   }
   $("#form").innerHTML = h;
 }
-function applyField(path, value) {
-  const parts = path.split(".");
-  let obj = state.cv;
-  for (let i = 0; i < parts.length - 1; i++) obj = obj[parts[i]];
-  const last = parts[parts.length - 1];
-  if (path === "basics.links" || last === "items") obj[last] = value.split(",").map((s) => s.trim()).filter(Boolean);
-  else if (last === "bullets") obj[last] = value.split("\n").map((s) => s.trim()).filter(Boolean);
-  else obj[last] = value;
-  persist(); schedulePreview();
-}
 let previewTimer;
-function schedulePreview() { clearTimeout(previewTimer); previewTimer = setTimeout(renderPreview, 150); }
-
-$("#form").addEventListener("input", (e) => { if (e.target.dataset.path) applyField(e.target.dataset.path, e.target.value); });
+$("#form").addEventListener("input", (e) => { if (e.target.dataset.path) { applyField(state.cv, e.target.dataset.path, e.target.value); persist(); clearTimeout(previewTimer); previewTimer = setTimeout(renderPreview, 150); } });
 $("#form").addEventListener("click", (e) => {
   const t = e.target;
   if (t.dataset.add) { const blank = {}; for (const [k, , kind] of FIELDS[t.dataset.add]) blank[k] = kind === "list" ? [] : ""; if (t.dataset.add === "experience") blank.bullets = []; const next = structuredClone(state.cv); next[t.dataset.add].push(blank); setCV(next); }
@@ -214,73 +184,14 @@ $("#form").addEventListener("click", (e) => {
   if (t.dataset.move) { const [k, i, d] = t.dataset.move.split(":"); const j = +i + +d; const next = structuredClone(state.cv); if (j < 0 || j >= next[k].length) return; [next[k][+i], next[k][j]] = [next[k][j], next[k][+i]]; setCV(next); }
 });
 
-/* ───────────────────────── templates ───────────────────────── */
+/* ───────────────────────── preview & export ───────────────────────── */
 
-const BASE_CSS = (serif) => `
-  @page { size: A4; margin: 12mm 14mm; }
-  html,body { margin:0; padding:0; background:#fff; color:#000; }
-  body { font-family: ${serif ? "'Liberation Serif','Times New Roman',Times,serif" : "'Liberation Sans',Helvetica,Arial,sans-serif"}; font-size:${serif ? "9.4pt" : "8.8pt"}; line-height:1.36; padding:12mm 14mm; }
-  @media print { body { padding:0; } }
-  .hdr { display:flex; gap:12pt; align-items:flex-start; margin-bottom:14pt; }
-  .pic { width:64pt; height:64pt; border-radius:50%; object-fit:cover; flex:none; }
-  .name { font-size:${serif ? "19pt" : "18pt"}; line-height:1.15; }
-  .role { font-weight:bold; margin-top:2pt; } .contact { margin-top:3pt; }
-  h2 { font-size:${serif ? "9.6pt" : "9.2pt"}; letter-spacing:.02em; margin:0 0 6pt; padding-bottom:3pt; border-bottom:.6pt solid #000; text-transform:uppercase; }
-  .sec { margin-bottom:12pt; } p { margin:0 0 5pt; } .tight p { margin-bottom:4pt; }
-  .job { margin-bottom:6pt; } .job .jh { display:flex; justify-content:space-between; gap:8pt; } .job .jh b { font-weight:bold; }
-  ul { margin:2pt 0 0 12pt; padding:0; } li { margin-bottom:1.5pt; }
-  .dot { margin:0 5pt; }
-`;
-const ATS_CSS = `@page { size:A4; margin:16mm; } body { font-family: Arial, Helvetica, sans-serif; font-size:10pt; line-height:1.4; color:#000; padding:16mm; margin:0; } @media print { body{padding:0} } h1{font-size:16pt;margin:0 0 2pt} h2{font-size:11pt;margin:14pt 0 4pt;text-transform:uppercase} p{margin:0 0 4pt} ul{margin:2pt 0 4pt 16pt;padding:0} .sub{font-weight:bold}`;
-
-function lineJoin(parts, sep = " | ") { return parts.filter(Boolean).map(esc).join(sep); }
-
-function renderStyled(cv, serif) {
-  const b = cv.basics;
-  const contact = lineJoin([b.location, b.phone, b.email, ...b.links], "  |  ");
-  const head = `<div class="hdr">${state.photo && $("#photo-toggle").checked ? `<img class="pic" src="${state.photo}" alt="">` : ""}<div><div class="name">${esc(b.name)}</div><div class="role">${esc(b.title)}</div><div class="contact">${contact}</div></div></div>`;
-  let h = head;
-  if (cv.summary) h += `<div class="sec"><h2>Summary</h2><p>${esc(cv.summary)}</p></div>`;
-  if (cv.experience.length) {
-    h += `<div class="sec"><h2>Work experience</h2>` + cv.experience.map((e) => `<div class="job"><div class="jh"><span><b>${esc(e.title)}</b>${e.company ? " — " + esc(e.company) : ""}${e.location ? ", " + esc(e.location) : ""}</span><span>${lineJoin([e.start, e.end], " – ")}</span></div>${e.bullets.length ? "<ul>" + e.bullets.map((x) => `<li>${esc(x)}</li>`).join("") + "</ul>" : ""}</div>`).join("") + `</div>`;
-  }
-  if (cv.skills.length) h += `<div class="sec"><h2>Skills</h2>` + cv.skills.map((s) => `<p><b>${esc(s.group)}:</b> ${s.items.map(esc).join(" <span class='dot'>·</span> ")}</p>`).join("") + `</div>`;
-  if (cv.projects.length) h += `<div class="sec tight"><h2>Projects</h2>` + cv.projects.map((p) => `<p><b>${esc(p.name)}</b> — ${esc(p.description)}${p.link ? " " + esc(p.link) : ""}</p>`).join("") + `</div>`;
-  if (cv.certifications.length) h += `<div class="sec tight"><h2>Certifications</h2>` + cv.certifications.map((c) => `<p><b>${esc(c.name)}</b> / ${lineJoin([c.issuer, c.year], " / ")}</p>`).join("") + `</div>`;
-  if (cv.education.length) h += `<div class="sec tight"><h2>Education</h2>` + cv.education.map((e) => `<p><b>${esc(e.school)}</b> — ${lineJoin([e.degree, e.year], " / ")}</p>`).join("") + `</div>`;
-  if (cv.languages.length) h += `<div class="sec"><h2>Languages</h2><p>${cv.languages.map((l) => `<b>${esc(l.name)}</b> / ${esc(l.level)}`).join(" <span class='dot'>·</span> ")}</p></div>`;
-  return `<!doctype html><html><head><meta charset="utf-8"><style>${BASE_CSS(serif)}</style></head><body>${h}</body></html>`;
-}
-function renderATS(cv) {
-  const b = cv.basics;
-  let h = `<h1>${esc(b.name)}</h1><p><b>${esc(b.title)}</b></p><p>${lineJoin([b.location, b.phone, b.email, ...b.links])}</p>`;
-  if (cv.summary) h += `<h2>Summary</h2><p>${esc(cv.summary)}</p>`;
-  if (cv.experience.length) h += `<h2>Work experience</h2>` + cv.experience.map((e) => `<p class="sub">${esc(e.title)}${e.company ? " — " + esc(e.company) : ""}</p><p>${lineJoin([e.location, [e.start, e.end].filter(Boolean).join(" – ")])}</p>${e.bullets.length ? "<ul>" + e.bullets.map((x) => `<li>${esc(x)}</li>`).join("") + "</ul>" : ""}`).join("");
-  if (cv.skills.length) h += `<h2>Skills</h2>` + cv.skills.map((s) => `<p><b>${esc(s.group)}:</b> ${s.items.map(esc).join(", ")}</p>`).join("");
-  if (cv.projects.length) h += `<h2>Projects</h2>` + cv.projects.map((p) => `<p><b>${esc(p.name)}</b> — ${esc(p.description)} ${esc(p.link)}</p>`).join("");
-  if (cv.certifications.length) h += `<h2>Certifications</h2>` + cv.certifications.map((c) => `<p>${lineJoin([c.name, c.issuer, c.year], ", ")}</p>`).join("");
-  if (cv.education.length) h += `<h2>Education</h2>` + cv.education.map((e) => `<p><b>${esc(e.degree)}</b> — ${lineJoin([e.school, e.year])}</p>`).join("");
-  if (cv.languages.length) h += `<h2>Languages</h2><p>${cv.languages.map((l) => `<b>${esc(l.name)}</b> / ${esc(l.level)}`).join(" · ")}</p>`;
-  return `<!doctype html><html><head><meta charset="utf-8"><style>${ATS_CSS}</style></head><body>${h}</body></html>`;
-}
 function renderPreview() {
   const t = $("#template").value;
-  $("#frame").srcdoc = t === "ats" ? renderATS(state.cv) : renderStyled(state.cv, t === "serif");
+  const photo = $("#photo-toggle").checked ? state.photo : null;
+  $("#frame").srcdoc = t === "ats" ? renderATS(state.cv) : renderStyled(state.cv, t === "serif", { photo });
 }
-function plainText(cv) {
-  const b = cv.basics, L = [b.name, b.title, [b.location, b.phone, b.email, ...b.links].filter(Boolean).join(" | "), ""];
-  if (cv.summary) L.push("SUMMARY", cv.summary, "");
-  if (cv.experience.length) { L.push("WORK EXPERIENCE"); for (const e of cv.experience) { L.push(`${e.title}${e.company ? " — " + e.company : ""} (${[e.start, e.end].filter(Boolean).join(" – ")})`); for (const x of e.bullets) L.push("- " + x); } L.push(""); }
-  if (cv.skills.length) { L.push("SKILLS"); for (const s of cv.skills) L.push(`${s.group}: ${s.items.join(", ")}`); L.push(""); }
-  if (cv.projects.length) { L.push("PROJECTS"); for (const p of cv.projects) L.push(`${p.name} — ${p.description} ${p.link}`.trim()); L.push(""); }
-  if (cv.certifications.length) { L.push("CERTIFICATIONS"); for (const c of cv.certifications) L.push([c.name, c.issuer, c.year].filter(Boolean).join(", ")); L.push(""); }
-  if (cv.education.length) { L.push("EDUCATION"); for (const e of cv.education) L.push([e.degree, e.school, e.year].filter(Boolean).join(" — ")); L.push(""); }
-  if (cv.languages.length) L.push("LANGUAGES", cv.languages.map((l) => `${l.name} / ${l.level}`).join(" · "));
-  return L.join("\n");
-}
-function download(name, content, type = "text/plain") {
-  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click(); URL.revokeObjectURL(a.href);
-}
+const fileBase = () => (state.cv.basics.name || "cv").replace(/\s+/g, "_");
 
 /* ───────────────────────── wiring ───────────────────────── */
 
@@ -290,29 +201,37 @@ $("#file").onchange = (e) => e.target.files[0] && readFile(e.target.files[0]).ca
 ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
 ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
 drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) readFile(f).catch((err) => status(err.message, true)); });
-$("#btn-parse-paste").onclick = () => { const t = $("#paste").value.trim(); if (!t) return status("Paste some text first.", true); parseWithAI(t).catch((e) => status(e.message, true)); };
+$("#btn-sample").onclick = () => { setCV(structuredClone(SAMPLE)); showWorkspace(); say("assistant", "This is a sample CV for a fictional person. Try: \"Add a project called ledger-viz\", or press a quick action."); };
 
-$("#btn-ask").onclick = () => { const q = $("#ask").value.trim(); if (!q) return status("Type an instruction first.", true); editWithAI(q); };
-document.querySelectorAll(".chips button").forEach((b) => (b.onclick = () => { $("#ask").value = b.dataset.q; editWithAI(b.dataset.q); }));
-$("#btn-undo").onclick = () => { const prev = state.history.pop(); if (prev) { state.cv = normalize(JSON.parse(prev)); persist(); renderForm(); renderPreview(); $("#btn-undo").disabled = state.history.length === 0; status("Undone."); } };
+$("#composer").addEventListener("submit", (e) => { e.preventDefault(); const q = $("#ask").value.trim(); if (!q) return; $("#ask").value = ""; editWithAI(q); });
+$("#ask").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#composer").requestSubmit(); } });
+document.querySelectorAll(".chips button").forEach((b) => (b.onclick = () => editWithAI(b.dataset.q)));
+$("#btn-mic").onclick = toggleMic;
+$("#btn-undo").onclick = () => { const prev = state.history.pop(); if (prev) { state.cv = normalize(JSON.parse(prev)); persist(); renderForm(); renderPreview(); $("#btn-undo").disabled = state.history.length === 0; say("assistant", "Undone."); } };
+
+document.querySelectorAll(".tab").forEach((t) => (t.onclick = () => {
+  document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === t));
+  document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + t.dataset.tab));
+}));
 
 $("#template").onchange = renderPreview;
 $("#photo-toggle").onchange = (e) => { if (e.target.checked && !state.photo) $("#photo-file").click(); else renderPreview(); };
 $("#photo-file").onchange = (e) => { const f = e.target.files[0]; if (!f) { $("#photo-toggle").checked = false; return; } const r = new FileReader(); r.onload = () => { state.photo = r.result; persist(); renderPreview(); }; r.readAsDataURL(f); };
 $("#btn-pdf").onclick = () => { const w = $("#frame").contentWindow; w.focus(); w.print(); };
-$("#btn-json").onclick = () => download((state.cv.basics.name || "cv").replace(/\s+/g, "_") + ".json", JSON.stringify(state.cv, null, 2), "application/json");
-$("#btn-txt").onclick = () => download((state.cv.basics.name || "cv").replace(/\s+/g, "_") + ".txt", plainText(state.cv));
-$("#btn-clear").onclick = () => { if (confirm("Clear the CV and photo from this browser?")) { state.photo = null; $("#photo-toggle").checked = false; setCV(EMPTY()); localStorage.removeItem("cvstudio.cv"); status("Cleared."); } };
-$("#btn-sample").onclick = () => { setCV(structuredClone(SAMPLE)); status("Sample loaded — try an AI action or edit by hand."); };
+$("#btn-json").onclick = () => download(fileBase() + ".json", JSON.stringify(state.cv, null, 2), "application/json");
+$("#btn-txt").onclick = () => download(fileBase() + ".txt", plainText(state.cv));
+$("#btn-new").onclick = () => { if (confirm("Start over? This clears the CV and photo from this browser.")) { state.photo = null; $("#photo-toggle").checked = false; state.history = []; state.cv = EMPTY(); localStorage.removeItem("cvstudio.cv"); localStorage.removeItem("cvstudio.photo"); $("#messages").innerHTML = ""; renderForm(); renderPreview(); showLanding(); status(""); } };
 
 const dlg = $("#settings");
-$("#btn-settings").onclick = () => { $("#provider").value = settings.provider || "anthropic"; $("#apikey").value = settings.apikey || ""; $("#model").value = settings.model || ""; $("#baseurl").value = settings.baseurl || ""; $("#baseurl-row").hidden = $("#provider").value !== "openai"; dlg.showModal(); };
+const openSettings = () => { $("#provider").value = settings.provider || "anthropic"; $("#apikey").value = settings.apikey || ""; $("#model").value = settings.model || ""; $("#baseurl").value = settings.baseurl || ""; $("#lang").value = settings.lang || ""; $("#baseurl-row").hidden = $("#provider").value !== "openai"; dlg.showModal(); };
+$("#btn-settings").onclick = openSettings; $("#btn-settings-landing").onclick = openSettings;
 $("#provider").onchange = (e) => { $("#baseurl-row").hidden = e.target.value !== "openai"; $("#model").placeholder = e.target.value === "openai" ? "gpt-4o-mini" : "claude-sonnet-5"; };
-$("#btn-save-settings").onclick = () => { Object.assign(settings, { provider: $("#provider").value, apikey: $("#apikey").value.trim(), model: $("#model").value.trim(), baseurl: $("#baseurl").value.trim() }); localStorage.setItem("cvstudio.settings", JSON.stringify(settings)); updateAiNote(); };
+$("#btn-save-settings").onclick = () => { Object.assign(settings, { provider: $("#provider").value, apikey: $("#apikey").value.trim(), model: $("#model").value.trim(), baseurl: $("#baseurl").value.trim(), lang: $("#lang").value.trim() }); localStorage.setItem("cvstudio.settings", JSON.stringify(settings)); };
 
 /* boot */
 const saved = localStorage.getItem("cvstudio.cv");
 state.photo = localStorage.getItem("cvstudio.photo");
 if (state.photo) $("#photo-toggle").checked = true;
 state.cv = normalize(saved ? JSON.parse(saved) : EMPTY());
-updateAiNote(); renderForm(); renderPreview();
+renderForm(); renderPreview();
+if (saved && state.cv.basics.name) { showWorkspace(); say("assistant", `Welcome back, ${state.cv.basics.name.split(" ")[0]}. Your CV is restored from this browser.`); }

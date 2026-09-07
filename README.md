@@ -1,52 +1,100 @@
+<div align="center">
+
 # CV Studio
 
-Upload a CV, edit every section, ask an AI to rewrite, tailor or translate it, export a polished PDF.
+**Drop a CV. Then tell it what to change — by typing or by speaking.**
 
-**Use it now, nothing to install:** https://aseydaaksakal.github.io/cv-studio/
+[**Open the app →**](https://aseydaaksakal.github.io/cv-studio/)
 
+[![Web tests](https://github.com/aseydaaksakal/cv-studio/actions/workflows/web-tests.yml/badge.svg)](https://github.com/aseydaaksakal/cv-studio/actions/workflows/web-tests.yml)
 [![Pages](https://github.com/aseydaaksakal/cv-studio/actions/workflows/pages.yml/badge.svg)](https://github.com/aseydaaksakal/cv-studio/actions/workflows/pages.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## Two editions
+</div>
 
-| | Web edition (`web/`) | Desktop edition (`backend/`, `frontend/`) |
-|---|---|---|
-| Runs | entirely in your browser | on your machine, FastAPI + local Ollama |
-| AI | your own API key (Anthropic or any OpenAI-compatible endpoint), sent straight from the browser to the provider | a local model — nothing leaves the machine |
-| Voice commands | – | yes (faster-whisper) |
-| Cost to host | free (GitHub Pages) | – |
-| Best for | anyone, on any device | working offline with private data |
+---
 
-### Web edition
+CV Studio is a CV editor that works the way you would brief a person: give it the document, then say what you want. *"Cut this to one page."* *"Add rag-eval under Projects."* *"Tailor it for this job description."* *"Bunu İngilizceye çevir."* Each instruction updates the CV; the preview updates with it; **Undo** takes it back.
 
-1. Open the site. Drop a **PDF**, **DOCX** or a previously saved **JSON**, or paste text. Parsing happens in the browser (pdf.js, mammoth).
-2. Open **AI settings** once, paste an API key. It is stored in `localStorage` and only ever sent to the provider you chose. This site has no server, so it cannot see your CV or your key.
-3. Use the quick actions — sharper summary, stronger bullets, ATS-friendly, fit one page, translate — or type your own instruction: *"Add a project called rag-eval under Projects"*, *"Tailor this for the job description below: …"*.
-4. Edit any field by hand. Every change updates the preview.
-5. Pick **Sans**, **Serif** or **ATS**, add a photo if you want one, and **Download PDF** (the browser's print dialog — choose *Save as PDF*, A4, no headers/footers). **Save JSON** keeps an editable copy; **Plain text** is for forms that strip formatting.
+It runs entirely in your browser. There is no server. Your CV is parsed locally, your API key is stored locally, and the only network call is the one you configure, from your browser to your own AI provider.
 
-Nothing is uploaded anywhere. **Load sample** fills in a fictional CV so you can try it without your own data. **Clear** wipes everything from the browser.
+## How it works
 
-The AI is instructed never to invent employers, dates, metrics or credentials. It rewrites what you gave it; it does not pad it. Review the output anyway — it is your name on the document.
-
-### Desktop edition
-
-```bash
-cd backend && pip install -r requirements.txt
-ollama pull qwen3.8:27b          # or edit MODEL in llm.py
-uvicorn app:app --reload
+```
+ empty page ──drop PDF/DOCX──▶ parsed in the browser (pdf.js / mammoth)
+                                        │
+                                        ▼
+                     AI structures it into JSON (your key, your provider)
+                                        │
+        ┌───────────────────────────────┼───────────────────────────────┐
+        ▼                               ▼                               ▼
+   Chat: type or speak           Fields: edit by hand            Preview: Sans / Serif / ATS
+   "make it shorter"             every field, add/remove/reorder  photo on/off, PDF, JSON, text
+        └──────────────── every change re-renders the preview ───────────┘
 ```
 
-Then open http://localhost:8000. The `Dockerfile` and `render.yaml` package this edition; note that hosted deployments have no Ollama, so AI commands only work where a local model is reachable.
+**Voice** uses the browser's built-in speech recognition (Chrome, Edge). Press the mic, speak, review the text, press Send. Nothing is recorded or uploaded.
+
+**The AI is constrained.** It receives the CV as JSON and returns JSON. It is instructed never to invent employers, dates, metrics or credentials, to change only what the instruction requires, and to say in one sentence what it changed. That sentence appears in the chat so you can check it against the preview.
+
+## Using it
+
+1. Open https://aseydaaksakal.github.io/cv-studio/ and drop a **PDF**, **DOCX** or a **JSON** saved earlier. Or click *Try with a sample* to see it work on a fictional CV.
+2. Open **⚙ AI settings** once. Pick Anthropic or any OpenAI-compatible endpoint, paste your key. Optionally set the voice language (`tr-TR`, `en-US`, …); it defaults to your browser's.
+3. Talk to it. Quick actions cover the common asks — sharper summary, stronger bullets, ATS-friendly, fit one page, translate. Anything else, just type or say it.
+4. Switch to **Fields** to fix a date, reorder jobs, or add a line without involving the AI.
+5. Pick a template, add a photo if you want one, **Download PDF** (browser print dialog → Save as PDF, A4, no headers/footers). **Save JSON** keeps an editable copy; **Plain text** is for forms that strip formatting.
+
+Your CV stays in this browser's `localStorage` between visits. **New CV** clears it.
+
+## Editions
+
+| | Web (`web/`) | Desktop (`backend/`, `frontend/`) |
+|---|---|---|
+| Runs | in the browser, hosted free on GitHub Pages | on your machine: FastAPI + local Ollama |
+| AI | your key → Anthropic or OpenAI-compatible | a local model; nothing leaves the machine |
+| Voice | browser speech recognition | faster-whisper, offline |
+| Best for | anyone, any device, zero setup | fully offline work with sensitive data |
+
+The desktop edition keeps content generation out of the model entirely: the model classifies a command into actions and Python applies them. See `AGENTS.md` and `backend/` for its architecture and tests.
+
+## Testing
+
+The web edition is tested at two levels, and CI runs both on every push:
+
+- **Unit** (`web/tests/core.test.mjs`, node:test): normalisation, JSON extraction, field editing, HTML escaping, every template, plain-text export.
+- **End-to-end** (`web/tests/app.e2e.mjs`, Playwright, real Chromium): landing → sample → workspace; template switching; chat without a key; chat with a key against a mocked AI endpoint, including the change note and Undo; quick actions; Fields editing reflected in the preview; persistence across reload; New CV; JSON/text export; dropping a saved JSON.
+
+What automation cannot cover and is checked by hand on each release: microphone permission flow, the print-to-PDF dialog, real PDF/DOCX parsing on a handful of layouts.
+
+```bash
+cd web
+node --test tests/core.test.mjs
+npm install && npx playwright install chromium && npx playwright test
+```
 
 ## Development
 
-The web edition is three static files with no build step: `web/index.html`, `web/app.css`, `web/app.js`. Push to `main` and the Pages workflow publishes `web/` to the `gh-pages` branch.
+No build step. `web/core.js` holds the pure logic, `web/app.js` the wiring, `web/index.html` and `web/app.css` the interface. Push to `main` and the Pages workflow publishes `web/` to the `gh-pages` branch. Conventions for agent sessions are in `CLAUDE.md`.
 
-Backend tests: `cd backend && pytest`.
+Desktop edition:
+
+```bash
+cd backend && pip install -r requirements.txt
+ollama pull qwen3.8:27b
+uvicorn app:app --reload
+```
 
 ## Privacy
 
-Web edition: no analytics, no server, no storage beyond your own browser's `localStorage`. Your API key and CV never touch this repository's infrastructure because there is none.
+Web edition: no analytics, no server, no storage beyond your own browser. The repository's infrastructure cannot see your CV or your key because there is none.
+
+## Roadmap
+
+- DOCX export
+- Job-description matching with a gap list
+- More templates, and a template editor driven by the same chat
+- Shareable read-only link (client-side encrypted)
 
 ## License
 

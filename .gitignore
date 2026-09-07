@@ -13,3 +13,7 @@ uploads/
 *.onceki
 cv_layout.json
 cv_structured.json
+node_modules/
+test-results/
+playwright-report/
+web/.nojekyll
