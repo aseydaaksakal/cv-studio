@@ -10,7 +10,7 @@ test.use(fakeMic("voice-en.wav"));
 
 test("spoken English is detected, transcribed into the composer, and Enter sends it to the model", async ({ page }) => {
   test.setTimeout(900_000);
-  const text = await speakAndTranscribe(page);
+  const text = await speakAndTranscribe(page, 5500); // the clip is 4.5s long
   await expect(page.locator("#mic-status")).toContainText("Heard English");
   expect(text.toLowerCase()).toMatch(/summar|certif|section|shorten/);
   await page.press("#ask", "Enter");

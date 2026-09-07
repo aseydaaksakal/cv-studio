@@ -9,7 +9,7 @@ test.use(fakeMic("voice-tr.wav"));
 
 test("spoken Turkish is detected as Turkish and transcribed", async ({ page }) => {
   test.setTimeout(900_000);
-  const text = await speakAndTranscribe(page);
+  const text = await speakAndTranscribe(page, 9500); // the clip is 8.4s long
   await expect(page.locator("#mic-status")).toContainText("Heard Türkçe");
   expect(text.length).toBeGreaterThan(5);
 });

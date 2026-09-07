@@ -8,8 +8,9 @@ export const EDITED = { ops: [{ op: "set", path: "basics.title", value: "Kıdeml
 export const TRANSCRIBE_TIMEOUT = 480_000;
 export const fakeMic = (file) => ({ permissions: ["microphone"], launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", `--use-file-for-fake-audio-capture=${clip(file)}%noloop`] } });
 
-/** Real in-browser Whisper (base, downloaded from Hugging Face, CPU on CI); only the AI edit endpoint is mocked. */
-export async function speakAndTranscribe(page) {
+/** Real in-browser Whisper (the default model, downloaded from Hugging Face, CPU on CI); only the AI edit is mocked.
+    clipMs must outlast the clip, because the fake microphone plays it once and then delivers silence. */
+export async function speakAndTranscribe(page, clipMs) {
   await page.route("https://api.anthropic.com/v1/messages", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ content: [{ type: "text", text: JSON.stringify(EDITED) }] }) }));
   await page.route(/cdn\.jsdelivr\.net.*mammoth/, (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: "window.mammoth={}" }));
@@ -20,7 +21,7 @@ export async function speakAndTranscribe(page) {
   await page.click("#btn-mic");
   await expect(page.locator("#btn-mic")).toHaveClass(/live/);
   await expect(page.locator("#mic-status")).toContainText("any language");
-  await page.waitForTimeout(5500); // the fake microphone plays the whole clip once
+  await page.waitForTimeout(clipMs);
   await page.click("#btn-mic");
   /* The model is downloaded and then run on the processor, which is slow on a CI runner. Each phase reports
      itself, so a timeout here names the phase it stalled in rather than leaving a stale download percentage. */
