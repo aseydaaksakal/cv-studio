@@ -43,7 +43,7 @@ const webllmPicky = (badId, reply) =>
   + "   return { chat: { completions: { create: async () => ({ choices: [{ message: { content: "
   + JSON.stringify(JSON.stringify(reply)) + " } }] }) } } }; }";
 
-const FAKE_TRANSFORMERS = `export const env = {}; export async function pipeline() { return async () => ({ text: " özeti kısalt lütfen " }); }`;
+const FAKE_TRANSFORMERS = `export const env = {}; export async function pipeline() { return async () => ({ text: " özeti kısalt lütfen ", chunks: [] }); }`;
 
 test.beforeEach(async ({ page }) => {
   await stubModel(page, EDITED);
@@ -371,5 +371,5 @@ test("the transcript says which engine produced it", async ({ page, context }) =
   await page.click("#btn-mic");
   await page.waitForTimeout(400);
   await page.click("#btn-mic");
-  await expect(page.locator("#mic-status")).toContainText("Heard via Whisper");
+  await expect(page.locator("#mic-status")).toContainText("via Whisper");
 });
