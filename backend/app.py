@@ -24,6 +24,7 @@ import sys
 import tempfile
 import threading
 import zipfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Response, UploadFile
@@ -50,7 +51,15 @@ ACCESS_PASSWORD = os.environ.get("CV_STUDIO_ACCESS_PASSWORD", "")
 # Bos birakilirsa hicbir dis kaynak erisemez; virgulle birden fazla adres.
 CORS_ORIGINS = [o.strip() for o in os.environ.get("CV_STUDIO_CORS", "").split(",") if o.strip()]
 
-app = FastAPI(title="CV Studio")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    session.devral()
+    session.hazirla()
+    yield
+
+
+app = FastAPI(title="CV Studio", lifespan=lifespan)
 # CORS: local development ve file:// erişimi için hepsine izin ver
 cors_origins = CORS_ORIGINS if CORS_ORIGINS else ["*"]
 app.add_middleware(CORSMiddleware,
@@ -108,10 +117,22 @@ def _hazirla(oid=""):
         return ""
 
 
-@app.on_event("startup")
-def baslat():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     session.devral()
     session.hazirla()
+    yield
+
+
+app = FastAPI(title="CV Studio", lifespan=lifespan)
+# CORS: local development ve file:// erişimi için hepsine izin ver
+cors_origins = CORS_ORIGINS if CORS_ORIGINS else ["*"]
+app.add_middleware(CORSMiddleware,
+                   allow_origins=cors_origins,
+                   allow_methods=["*"],
+                   allow_headers=["*"],
+                   allow_credentials=True)
+app.include_router(voice_router)
 
 
 # --- arayuz -----------------------------------------------------------
