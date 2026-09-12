@@ -225,6 +225,35 @@ def oturum_ad(istek: OturumAd):
     return {"ok": True, "oturum": session.ad_ver(istek.id, istek.ad)}
 
 
+class OturumYeni(BaseModel):
+    ad: str = ""
+    kaynak: str = ""
+
+
+@app.post("/oturum/yeni")
+def oturum_yeni(istek: OturumYeni):
+    try:
+        oid = session.yeni(ad=istek.ad.strip() or "", kaynak=istek.kaynak.strip() or "")
+        session.sec(oid)
+        return {"ok": True, "id": oid, "oturum": session.ozet(oid)}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/oturum/batch-sil")
+def oturum_batch_sil(istek: dict):
+    ids = istek.get("ids", [])
+    if not isinstance(ids, list):
+        return {"ok": False, "error": "ids bir liste olmalıdır"}
+
+    for oid in ids:
+        if session.var(oid):
+            session.sil(oid)
+
+    session.hazirla()
+    return {"ok": True, "aktif": session.aktif(), "oturumlar": session.liste()}
+
+
 # --- komutlar ---------------------------------------------------------
 
 def _tasarim_adimlari(text, adimlar, mevcut_css):

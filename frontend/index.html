@@ -178,7 +178,7 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
   width:90%;max-width:700px;box-shadow:0 24px 48px rgba(0,0,0,.8);
 }
 .modal-header{
-  display:flex;align-items:center;justify-content:space-between;
+  display:flex;align-items:center;gap:8px;
   padding:16px 20px;border-bottom:1px solid var(--edge-soft);
 }
 .modal-header h2{margin:0;font-size:16px;font-weight:600}
@@ -228,6 +228,19 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
 .session-btn:hover{color:var(--text);border-color:var(--accent)}
 .session-btn.delete{color:#e0605a}
 .session-btn.delete:hover{border-color:#e0605a}
+.session-btn.danger{color:#e0605a;border-color:#5a4327}
+.session-btn.danger:hover{border-color:#e0605a}
+.session-btn.primary{color:var(--accent);border-color:var(--accent)}
+.session-btn.primary:hover{background:rgba(143,176,216,.1)}
+
+/* checkbox styling */
+.session-checkbox{
+  width:18px;height:18px;cursor:pointer;
+  accent-color:var(--accent);
+}
+.session-table input[type="checkbox"]{
+  accent-color:var(--accent);
+}
 
 /* ---- dialog ---- */
 .dialog-content{
@@ -349,6 +362,9 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
     <div class="modal-content">
       <div class="modal-header">
         <h2>Oturumlarım</h2>
+        <div class="grow"></div>
+        <button class="session-btn primary" id="newSessionBtn" title="Yeni oturum oluştur">+ Yeni</button>
+        <button class="session-btn danger" id="batchDeleteBtn" title="Seçili oturumları sil" style="display:none">🗑 Sil</button>
         <button class="close-btn" id="closeSession" aria-label="Kapat">✕</button>
       </div>
       <div class="modal-search">
@@ -358,6 +374,7 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
         <table class="session-table" id="sessionTable">
           <thead>
             <tr>
+              <th style="width:30px"><input type="checkbox" id="selectAllChk"></th>
               <th>Ad</th>
               <th>Kaynak</th>
               <th>Bölümler</th>
@@ -398,6 +415,20 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
       <div class="dialog-actions">
         <button id="deleteCancel" class="btn-secondary">İptal</button>
         <button id="deleteOk" class="btn-danger">Sil</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Session Dialog -->
+  <div id="newSessionDialog" class="modal" style="display:none">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h3>Yeni Oturum</h3>
+      </div>
+      <input type="text" id="newSessionInput" placeholder="Oturum adı (örn: Benim CV)" autofocus>
+      <div class="dialog-actions">
+        <button id="newSessionCancel" class="btn-secondary">İptal</button>
+        <button id="newSessionOk" class="btn-primary">Oluştur</button>
       </div>
     </div>
   </div>
@@ -546,6 +577,18 @@ async function loadOturumlar(){
   renderSessionList(oturumlar);
 }
 
+let seciliOturumlar = new Set();
+
+function updateBatchDeleteBtn(){
+  const batchBtn = $("#batchDeleteBtn");
+  if (seciliOturumlar.size > 0) {
+    batchBtn.style.display = "inline-block";
+    batchBtn.textContent = `🗑 Sil (${seciliOturumlar.size})`;
+  } else {
+    batchBtn.style.display = "none";
+  }
+}
+
 function renderSessionList(filtrelenmisList){
   sessionList.innerHTML = "";
   if (!filtrelenmisList.length) {
@@ -563,6 +606,7 @@ function renderSessionList(filtrelenmisList){
     const durumu = o.hazir ? (o.gecmis > 0 ? `${o.gecmis} adım` : "Yeni") : "İşleniyor";
 
     tr.innerHTML = `
+      <td><input type="checkbox" class="session-checkbox" data-id="${o.id}"></td>
       <td><span class="session-name" data-id="${o.id}">${o.ad || o.id}</span></td>
       <td><span class="session-meta">${o.kaynak || "—"}</span></td>
       <td><span class="session-meta">${o.bolum} bölüm</span></td>
@@ -572,6 +616,19 @@ function renderSessionList(filtrelenmisList){
         <button class="session-btn delete" data-id="${o.id}" title="Sil">🗑</button>
       </td>
     `;
+
+    // Checkbox seçimi
+    const chk = tr.querySelector(".session-checkbox");
+    chk.checked = seciliOturumlar.has(o.id);
+    chk.addEventListener("change", (e) => {
+      if (e.target.checked) {
+        seciliOturumlar.add(o.id);
+      } else {
+        seciliOturumlar.delete(o.id);
+      }
+      updateBatchDeleteBtn();
+      updateSelectAllCheckbox();
+    });
 
     // Session seç
     tr.querySelector(".session-name").addEventListener("click", () => {
@@ -756,6 +813,80 @@ async function renameSession(id, currentName){
     };
   });
 }
+
+function updateSelectAllCheckbox(){
+  const allChk = $("#selectAllChk");
+  const chks = document.querySelectorAll(".session-checkbox");
+  if (chks.length === 0) {
+    allChk.checked = false;
+    allChk.indeterminate = false;
+  } else {
+    const checked = document.querySelectorAll(".session-checkbox:checked").length;
+    allChk.checked = checked === chks.length && chks.length > 0;
+    allChk.indeterminate = checked > 0 && checked < chks.length;
+  }
+}
+
+async function showNewSessionDialog(){
+  const dialog = $("#newSessionDialog");
+  const input = $("#newSessionInput");
+  input.value = "";
+  dialog.style.display = "flex";
+  input.focus();
+
+  return new Promise((resolve) => {
+    const submit = async () => {
+      const ad = input.value.trim();
+      dialog.style.display = "none";
+      if (!ad) {
+        resolve();
+        return;
+      }
+      const r = await jpost("/oturum/yeni", {ad, kaynak: ""});
+      if (r.ok) {
+        await loadOturumlar();
+        seciliOturumlar.clear();
+        updateBatchDeleteBtn();
+        hint.textContent = `"${ad}" oturumu oluşturuldu`;
+      } else {
+        hint.textContent = "Oturum oluşturma başarısız: " + (r.error || "Bilinmeyen hata");
+      }
+      resolve();
+    };
+
+    const cancel = () => {
+      dialog.style.display = "none";
+      resolve();
+    };
+
+    $("#newSessionOk").onclick = submit;
+    $("#newSessionCancel").onclick = cancel;
+    input.onkeydown = (e) => {
+      if (e.key === "Enter") submit();
+      if (e.key === "Escape") cancel();
+    };
+  });
+}
+
+async function batchDeleteSessions(){
+  if (seciliOturumlar.size === 0) return;
+
+  const ids = Array.from(seciliOturumlar);
+  const count = ids.length;
+  const msg = count === 1 ? "Bu oturumu silmek istiyor musunuz?" : `${count} oturumu silmek istiyor musunuz?`;
+
+  if (!confirm(msg + "\nBu işlem geri alınamaz.")) return;
+
+  const r = await jpost("/oturum/batch-sil", {ids});
+  if (r.ok) {
+    seciliOturumlar.clear();
+    updateBatchDeleteBtn();
+    await loadOturumlar();
+    hint.textContent = `${count} oturum silindi`;
+  } else {
+    hint.textContent = "Silme başarısız: " + (r.error || "Bilinmeyen hata");
+  }
+}
 async function yukleDosya(file){
   if (!file) return;
 
@@ -886,22 +1017,50 @@ uploadLabel.addEventListener("drop", e => {
 sessionBtn.addEventListener("click", () => {
   sessionModal.style.display = "flex";
   sessionSearch.focus();
+  updateSelectAllCheckbox();
 });
 closeSession.addEventListener("click", () => {
   sessionModal.style.display = "none";
+  seciliOturumlar.clear();
+  updateBatchDeleteBtn();
 });
 sessionModal.addEventListener("click", (e) => {
-  if (e.target === sessionModal) sessionModal.style.display = "none";
+  if (e.target === sessionModal) {
+    sessionModal.style.display = "none";
+    seciliOturumlar.clear();
+    updateBatchDeleteBtn();
+  }
 });
 sessionSearch.addEventListener("input", filterSessions);
 
+$("#newSessionBtn").addEventListener("click", showNewSessionDialog);
+$("#batchDeleteBtn").addEventListener("click", batchDeleteSessions);
+$("#selectAllChk").addEventListener("change", (e) => {
+  if (e.target.checked) {
+    document.querySelectorAll(".session-checkbox").forEach(chk => {
+      chk.checked = true;
+      seciliOturumlar.add(chk.dataset.id);
+    });
+  } else {
+    seciliOturumlar.clear();
+    document.querySelectorAll(".session-checkbox").forEach(chk => {
+      chk.checked = false;
+    });
+  }
+  updateBatchDeleteBtn();
+});
+
 const renameDialog = $("#renameDialog");
 const deleteDialog = $("#deleteDialog");
+const newSessionDialog = $("#newSessionDialog");
 renameDialog.addEventListener("click", (e) => {
   if (e.target === renameDialog) renameDialog.style.display = "none";
 });
 deleteDialog.addEventListener("click", (e) => {
   if (e.target === deleteDialog) deleteDialog.style.display = "none";
+});
+newSessionDialog.addEventListener("click", (e) => {
+  if (e.target === newSessionDialog) newSessionDialog.style.display = "none";
 });
 
 /* ---------- sira: arka planda tek tek calisir ---------- */
