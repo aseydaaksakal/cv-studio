@@ -151,7 +151,10 @@ def bolumler(client, oid):
 def test_uclar(app, client):
     print("\n[1] Uc noktalar")
 
+    # FastAPI 0.141+ iceri alinan yonlendiricileri app.routes icinde tembel
+    # tutuyor; OpenAPI semasi her surumde tam listeyi verir.
     yollar = {getattr(r, "path", "") for r in app.app.routes}
+    yollar |= set(app.app.openapi().get("paths", {}))
     for yol in ("/upload", "/oturum", "/oturum/sec", "/oturum/sil",
                 "/oturum/ad"):
         kontrol("uc var: {}".format(yol), yol in yollar, sorted(yollar))

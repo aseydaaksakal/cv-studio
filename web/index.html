@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CV Studio — edit your CV by talking to it</title>
+<meta name="description" content="Drop a PDF or DOCX. Then type or speak what you want changed. Everything runs in your browser with your own AI key.">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- ───────── landing: an empty page with one thing on it ───────── -->
+<section id="landing" class="landing">
+  <div class="drop big" id="drop">
+    <input type="file" id="file" accept=".pdf,.docx,.json,.txt" hidden>
+    <div class="drop-inner">
+      <div class="logo">CV Studio</div>
+      <p class="lead">Drop your CV here.</p>
+      <p class="muted">PDF, DOCX or a saved JSON. Or <button class="linkish" id="btn-browse">choose a file</button>.</p>
+      <p class="muted small">Read in your browser. Sent only to the AI provider you configure, with your own key.</p>
+      <div class="landing-actions">
+        <button id="btn-sample" class="ghost">Try with a sample</button>
+        <button id="btn-settings-landing" class="ghost">AI settings</button>
+      </div>
+    </div>
+  </div>
+  <p class="status" id="status-landing"></p>
+</section>
+
+<!-- ───────── workspace: chat on the left, the CV on the right ───────── -->
+<main id="workspace" class="workspace" hidden>
+  <!-- left: the CV, with the message box under it -->
+  <section class="stage">
+    <div class="toolbar">
+      <div class="brand">CV Studio</div>
+      <button id="btn-upload" class="ghost small">Upload CV</button>
+      <label>Template
+        <select id="template">
+          <option value="sans">Sans</option>
+          <option value="serif">Serif</option>
+          <option value="ats">ATS (plain)</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="photo-toggle"> Photo</label>
+      <input type="file" id="photo-file" accept="image/*" hidden>
+      <span class="spacer"></span>
+      <button id="btn-pdf" class="primary small">Download PDF</button>
+      <button id="btn-json" class="ghost small">Save JSON</button>
+      <button id="btn-txt" class="ghost small">Plain text</button>
+      <button id="btn-new" class="ghost small">New CV</button>
+      <button id="btn-settings" class="icon" title="Settings">⚙</button>
+    </div>
+    <iframe id="frame" title="CV preview"></iframe>
+    <form id="composer" class="composer">
+      <div class="box">
+        <textarea id="ask" rows="2" placeholder="Say or type what to change. Enter applies it."></textarea>
+        <button type="button" id="btn-mic" class="icon in-box" title="Speak in any language">🎙</button>
+        <button type="submit" id="btn-ask" class="icon in-box send" title="Apply (Enter)">↵</button>
+      </div>
+      <div class="composer-row">
+        <span id="mic-status" class="muted small"></span>
+        <span class="spacer"></span>
+        <span id="status" class="status small"></span>
+        <button type="button" id="btn-undo" class="ghost small" disabled>Undo</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- right: what changed, and the field editor -->
+  <aside class="side">
+    <header class="side-head">
+      <nav class="tabs">
+        <button class="tab active" data-tab="chat">Changes</button>
+        <button class="tab" data-tab="fields">Fields</button>
+      </nav>
+    </header>
+    <section id="tab-chat" class="tab-panel active">
+      <div id="messages" class="messages"></div>
+      <div class="chips">
+        <button data-q="Tighten the summary to three sentences that lead with impact.">Sharper summary</button>
+        <button data-q="Rewrite every experience bullet to start with a strong verb and include a measurable result where one exists. Do not invent numbers.">Stronger bullets</button>
+        <button data-q="Make this ATS-friendly: plain wording, standard section names, no tables or symbols in text.">ATS-friendly</button>
+        <button data-q="Cut content so it fits one A4 page without losing the strongest achievements.">Fit one page</button>
+        <button data-q="Translate the whole CV to English, keeping names and proper nouns.">English</button>
+        <button data-q="Translate the whole CV to Turkish, keeping names and proper nouns.">Türkçe</button>
+      </div>
+    </section>
+    <section id="tab-fields" class="tab-panel"><div id="form"></div></section>
+  </aside>
+</main>
+
+<!-- ───────── settings ───────── -->
+<dialog id="settings">
+  <form method="dialog" class="dlg">
+    <h2>AI settings</h2>
+    <p class="muted">Stored only in this browser. Sent only to the provider you pick. This site has no server.</p>
+    <label>AI engine
+      <select id="provider">
+        <option value="local">In this browser — free, no key, open-source model (WebGPU)</option>
+        <option value="ollama">Ollama on my own machine or tunnel — free, no key, your GPU</option>
+        <option value="anthropic">Anthropic (Claude) — your key</option>
+        <option value="openai">OpenAI-compatible — your key</option>
+      </select>
+    </label>
+    <label id="localmodel-row">Local model <select id="localmodel"></select></label>
+    <label id="custommodel-row" hidden>MLC model id <input type="text" id="custommodel" placeholder="e.g. Qwen2.5-Coder-7B-Instruct-q4f16_1-MLC"></label>
+    <label id="apikey-row" hidden>API key <input type="password" id="apikey" placeholder="sk-…" autocomplete="off"></label>
+    <label id="model-row" hidden>Model <input type="text" id="model" placeholder="claude-sonnet-5"></label>
+    <label id="baseurl-row" hidden>Base URL <input type="text" id="baseurl" placeholder="https://api.openai.com/v1"></label>
+    <label id="ollama-row" hidden>Ollama URL <input type="text" id="ollamaurl" placeholder="http://localhost:11434"></label>
+    <label id="ollamamodel-row" hidden>Ollama model
+      <input type="text" id="ollamamodel" list="ollama-installed" placeholder="qwen3.8:27b">
+      <datalist id="ollama-installed"></datalist>
+    </label>
+    <label id="desktopurl-row" hidden>Desktop backend URL <input type="text" id="desktopurl" placeholder="http://localhost:8000"></label>
+    <label>Voice engine
+      <select id="engine">
+        <option value="local">In this browser — Whisper, detects the language, no key</option>
+        <option value="desktop">CV Studio desktop backend on my machine or tunnel — faster-whisper</option>
+        <option value="browser">Browser speech recognition — instant, browser's language only</option>
+        <option value="whisper">Whisper API (OpenAI) — your key</option>
+      </select>
+    </label>
+    <label id="localwhisper-row">Local Whisper size <select id="localwhisper"></select></label>
+    <label id="sttkey-row" hidden>OpenAI key for Whisper API <input type="password" id="sttkey" autocomplete="off"></label>
+    <p class="muted small" id="gpu-note"></p>
+    <div class="row">
+      <button type="button" id="btn-test-model" class="ghost small">Test this model</button>
+      <span id="test-result" class="muted small"></span>
+    </div>
+    <p class="muted">Keys are only needed for the cloud options: <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a> · <a href="https://platform.openai.com/" target="_blank" rel="noopener">platform.openai.com</a></p>
+    <div class="row end">
+      <button value="cancel" class="ghost">Cancel</button>
+      <button value="ok" class="primary" id="btn-save-settings">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+name: Web tests
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", ".github/workflows/web-tests.yml"]
+  pull_request:
+    paths: ["web/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: "20" }
+      - run: node --test tests/core.test.mjs
+
+  e2e:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: "20" }
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Playwright
+        run: npx playwright test --reporter=list 2>&1 | tee pw.log
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with: { name: playwright-report, path: web/test-results, if-no-files-found: ignore }
+      - name: Report the failure where it can be read
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Workflow: ${{ github.workflow }} · run ${{ github.run_id }}"
+            echo "Commit: ${{ github.sha }}"
+            echo
+            echo '```'
+            tail -c 12000 pw.log 2>/dev/null || echo "no pw.log"
+            echo '```'
+          } > body.md
+          cat body.md >> "$GITHUB_STEP_SUMMARY"
+          gh issue list --state open --label ci-failure --json number --jq '.[0].number' > n.txt || true
+          if [ -s n.txt ] && [ "$(cat n.txt)" != "null" ]; then
+            gh issue comment "$(cat n.txt)" --body-file body.md
+          else
+            gh label create ci-failure --color b60205 --description "Automated CI failure report" 2>/dev/null || true
+            gh issue create --title "CI: web e2e failure" --label ci-failure --body-file body.md
+          fi
