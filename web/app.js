@@ -375,6 +375,17 @@ function describeChanges(currentCV, previousCV) {
   return `Undone: Multiple changes.`;
 }
 
+function updateUndoButtonTitle() {
+  const btn = $("#btn-undo");
+  if (!btn) return;
+  const count = state.history.length;
+  if (count === 0) {
+    btn.title = "No changes to undo";
+  } else {
+    btn.title = `Undo (${count} change${count !== 1 ? "s" : ""} available)`;
+  }
+}
+
 $("#btn-undo").onclick = () => {
   const prev = state.history.pop();
   if (prev) {
@@ -383,6 +394,7 @@ $("#btn-undo").onclick = () => {
     state.cv = previousCV;
     persist(); renderForm(); renderPreview();
     $("#btn-undo").disabled = state.history.length === 0;
+    updateUndoButtonTitle();
     say("assistant", message);
   }
 };
