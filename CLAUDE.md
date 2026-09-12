@@ -109,6 +109,25 @@ These rules apply to ALL Claude Code sessions on this project (desktop, cloud, r
 - Every deploy is live on GitHub Pages
 - User only refreshes the page to see updates
 
+### 6. Feature Completion Workflow 🔄
+
+**Rule:** When each feature is complete, automatically open a new session tab and continue from there.
+
+**Workflow:**
+1. ✅ Complete feature implementation (code, test, commit, push)
+2. ✅ Verify on live site
+3. ✅ Open new Claude Code tab/session
+4. ✅ New session continues from where the previous one left off
+5. ✅ No handoff delays or manual context transfer needed
+
+**Implementation:**
+- When feature is done → send final report
+- User clicks "New Tab" or continuation link
+- New Claude Code session starts with full context
+- Automatically picks up the next feature from .progress/ROADMAP.md
+
+**Why:** Keeps sessions focused, prevents context bloat, maintains momentum on multi-feature sprints.
+
 ---
 
 ## Override Detection
