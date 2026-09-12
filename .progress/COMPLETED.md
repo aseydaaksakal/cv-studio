@@ -177,3 +177,23 @@ All acceptance criteria met. Ready for Stage 6d-7h: Advanced Session Features.
 - ✅ Original session unchanged
 - ✅ New session ID generated correctly (4-digit format)
 - ✅ Checkbox persistence still works (Feature #1 integration)
+
+### 1.3 Batch Rename (COMPLETE ✅)
+- [x] Backend endpoint: `POST /oturum/batch-ad-degistir`
+- [x] Validates all session IDs exist
+- [x] All-or-nothing atomicity (rollback on any failure)
+- [x] Frontend "Yeniden Adlandır" button (shows when sessions selected)
+- [x] Batch rename modal with input table
+- [x] Dynamic input generation for each selected session
+- [x] Clears selections after successful batch rename
+- [x] Error handling and progress notifications
+
+**Test Results:**
+- ✅ Batch rename button appears only when sessions selected
+- ✅ Modal shows current and new name fields for each session
+- ✅ All sessions renamed simultaneously
+- ✅ Selections cleared after successful batch rename
+- ✅ Integration with checkbox persistence (Feature #1) working
+- ✅ Error handling for invalid/missing sessions
+
+**v0.2.0 Progress: 3/5 features complete (60%)**

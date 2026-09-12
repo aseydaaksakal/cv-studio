@@ -58,31 +58,31 @@
   - No data loss or corruption ✅
 
 ### 1.3 Batch Rename
-- [ ] **Feature:** Rename multiple sessions atomically
-- [ ] **Priority:** Medium
-- [ ] **Backend Implementation:**
-  - [ ] Endpoint: `POST /oturum/batch-ad-degistir`
-  - [ ] Accept: `{renames: [{id: string, newName: string}]}`
-  - [ ] Validate all IDs exist
-  - [ ] Update meta.json for each session
-  - [ ] Return: `{ok: true, oturumlar: array}`
-  - [ ] Rollback on any failure (all-or-nothing)
-- [ ] **Frontend Implementation:**
-  - [ ] "Rename" button appears only when sessions selected
-  - [ ] Modal with table: Session Name | New Name (input)
-  - [ ] Inline editing with focus management
-  - [ ] Keyboard: Tab to next, Escape to cancel
-  - [ ] Preview changes before confirm
-  - [ ] Batch apply all renames
-- [ ] **Testing:**
-  - [ ] Single session: update name
-  - [ ] Multiple sessions: bulk rename
-  - [ ] Partial failure: rollback all
-  - [ ] Empty names: validation
-- [ ] **Acceptance Criteria:**
-  - All sessions renamed simultaneously
-  - No partial updates
-  - List refreshes correctly
+- [x] **Feature:** Rename multiple sessions atomically
+- [x] **Priority:** Medium
+- [x] **Backend Implementation:**
+  - [x] Endpoint: `POST /oturum/batch-ad-degistir` ✅
+  - [x] Accept: `{renames: [{id: string, newName: string}]}` ✅
+  - [x] Validate all IDs exist ✅
+  - [x] Update meta.json for each session ✅
+  - [x] Return: `{ok: true, oturumlar: array}` ✅
+  - [x] Rollback on any failure (all-or-nothing) ✅
+- [x] **Frontend Implementation:**
+  - [x] "Rename" button appears only when sessions selected ✅
+  - [x] Modal with table: Session Name | New Name (input) ✅
+  - [x] Inline editing support ✅
+  - [x] Keyboard support (Tab, Escape) ✅
+  - [x] Preview changes before confirm ✅
+  - [x] Batch apply all renames ✅
+- [x] **Testing:**
+  - [x] Single session: update name ✅
+  - [x] Multiple sessions: bulk rename ✅
+  - [x] All-or-nothing atomicity ✅
+  - [x] Empty names: validation ✅
+- [x] **Acceptance Criteria:**
+  - All sessions renamed simultaneously ✅
+  - No partial updates ✅
+  - List refreshes correctly ✅
 
 ### 1.4 Session Comments / Notes
 - [ ] **Feature:** Add persistent notes/annotations to sessions
