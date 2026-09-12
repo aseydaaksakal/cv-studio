@@ -141,8 +141,8 @@ export async function localTranscriber(model, onProgress = () => {}) {
     tf = await import(TRANSFORMERS_URL);
     const { pipeline, env } = tf;
     env.allowLocalModels = false;
-    onProgress("Loading Whisper (first time downloads it, then it is cached)…", 0);
-    const progress_callback = (p) => { if (p.status === "progress") onProgress(`Loading Whisper… ${p.file || ""}`, Math.round(p.progress || 0)); };
+    onProgress("Downloading Whisper (first time only, then cached)…", 0);
+    const progress_callback = (p) => { if (p.status === "progress") onProgress(`Downloading Whisper ${Math.round((p.progress || 0) * 100)}%`, Math.round((p.progress || 0) * 100)); };
     const onGPU = { device: "webgpu", dtype: { encoder_model: "fp32", decoder_model_merged: "q4" }, progress_callback };
     const onCPU = { device: "wasm", dtype: "q8", progress_callback };
     /* Ask for the adapter before choosing, so a machine without one downloads the CPU build only.
