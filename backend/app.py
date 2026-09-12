@@ -20,7 +20,9 @@ import base64
 import json
 import os
 import secrets
+import sys
 import tempfile
+import threading
 import zipfile
 from pathlib import Path
 
@@ -186,7 +188,6 @@ def state(id: str = ""):
 @app.post("/upload")
 async def upload(dosya: UploadFile = File(...), ad: str = Form("")):
     """PDF/DOCX'i boyut kontrollu kaydeder, yeni bir oturumda işler - hemen döner, arka planda işler."""
-    import sys
     print(f"[UPLOAD] === BAŞLANGÍÇ ===", file=sys.stderr, flush=True)
     try:
         print(f"[UPLOAD] Dosya: {dosya.filename}", file=sys.stderr, flush=True)
