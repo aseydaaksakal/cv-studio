@@ -102,10 +102,13 @@ export async function localChat(model, onProgress = () => {}) {
   engineLoading = (async () => {
     const webllm = await import(WEBLLM_URL);
     onProgress("Loading the local model (first time downloads it, then it is cached)…", 0);
-    const created = await webllm.CreateMLCEngine(model, {
-      initProgressCallback: (p) => onProgress(p.text || "Loading…", Math.round((p.progress || 0) * 100)),
-    });
-    engine = created; engineModel = model;
+    const oldLog = console.log; console.log = () => {}; // Suppress WebLLM debug logs
+    try {
+      const created = await webllm.CreateMLCEngine(model, {
+        initProgressCallback: (p) => onProgress(p.text || "Loading…", Math.round((p.progress || 0) * 100)),
+      });
+      engine = created; engineModel = model;
+    } finally { console.log = oldLog; }
   })();
   try { await engineLoading; } finally { engineLoading = null; }
   return engine;

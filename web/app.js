@@ -74,7 +74,7 @@ async function callModel(system, user) {
       const fallback = pickForBudget(models, 8) || models[0][0];
       if (!fallback || fallback === chosen) throw new Error(`${e.message} Open ⚙ and pick another model.`);
       settings.localmodel = fallback; settings.custommodel = ""; saveSettings(); fillModels(models);
-      say("assistant", `"${chosen}" is not available in this browser, so I switched to ${fallback} and retried.`);
+      // Silently switch to fallback model without message
       return localComplete(fallback, system, user, progress);
     }
   }
