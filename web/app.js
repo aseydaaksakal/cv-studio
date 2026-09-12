@@ -263,7 +263,11 @@ async function startRecording(transcribe) {
 
 async function transcribeLocally(blob) {
   try {
-    return await localTranscribe(localWhisperId(settings.localwhisper), blob, (msg, pct) => micStatus(pct ? `${msg} ${pct}%` : msg));
+    const transcribePromise = localTranscribe(localWhisperId(settings.localwhisper), blob, (msg, pct) => micStatus(pct ? `${msg} ${pct}%` : msg));
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Transcription taking too long — this usually means your GPU wasn't detected. Try the desktop app for faster transcription, or use browser speech recognition in settings.")), 60000)
+    );
+    return await Promise.race([transcribePromise, timeoutPromise]);
   } catch (e) {
     console.error("Transcription error:", e);
     throw e;
