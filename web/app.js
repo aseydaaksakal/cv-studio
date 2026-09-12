@@ -357,7 +357,35 @@ $("#composer").addEventListener("submit", (e) => { e.preventDefault(); const q =
 $("#ask").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#composer").requestSubmit(); } });
 document.querySelectorAll(".chips button").forEach((b) => (b.onclick = () => editWithAI(b.dataset.q)));
 $("#btn-mic").onclick = toggleMic;
-$("#btn-undo").onclick = () => { const prev = state.history.pop(); if (prev) { state.cv = normalize(JSON.parse(prev)); persist(); renderForm(); renderPreview(); $("#btn-undo").disabled = state.history.length === 0; say("assistant", "Undone."); } };
+
+function describeChanges(currentCV, previousCV) {
+  // Detect what changed between CVs
+  const changes = [];
+
+  if (currentCV.basics?.name !== previousCV.basics?.name) changes.push("name");
+  if (JSON.stringify(currentCV.basics) !== JSON.stringify(previousCV.basics)) changes.push("contact info");
+  if (JSON.stringify(currentCV.summary) !== JSON.stringify(previousCV.summary)) changes.push("summary");
+  if (JSON.stringify(currentCV.skills) !== JSON.stringify(previousCV.skills)) changes.push("skills");
+  if (JSON.stringify(currentCV.experience) !== JSON.stringify(previousCV.experience)) changes.push("experience");
+  if (JSON.stringify(currentCV.education) !== JSON.stringify(previousCV.education)) changes.push("education");
+
+  if (changes.length === 0) return "Undone.";
+  if (changes.length === 1) return `Undone: ${changes[0]}.`;
+  if (changes.length <= 3) return `Undone: ${changes.slice(0, -1).join(", ")} and ${changes[changes.length - 1]}.`;
+  return `Undone: Multiple changes.`;
+}
+
+$("#btn-undo").onclick = () => {
+  const prev = state.history.pop();
+  if (prev) {
+    const previousCV = normalize(JSON.parse(prev));
+    const message = describeChanges(state.cv, previousCV);
+    state.cv = previousCV;
+    persist(); renderForm(); renderPreview();
+    $("#btn-undo").disabled = state.history.length === 0;
+    say("assistant", message);
+  }
+};
 
 document.querySelectorAll(".tab").forEach((t) => (t.onclick = () => {
   document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === t));
