@@ -153,14 +153,22 @@ def do_render(id: str = ""):
 
 @app.get("/preview")
 def preview(id: str = ""):
-    """Diskteki cv_generated.html. compare_cv.py ile ayni dosya."""
+    """Diskteki cv_generated.html. Eger PNG varsa onu serve et!"""
     if not _hazirla(id):
         return HTMLResponse("<p>Onizleme yok. Once /render cagir.</p>",
                             status_code=404, headers=NO_CACHE)
+
+    # PNG varsa serve et (hemen görülür)
+    png_path = Path(__file__).parent.parent / "output" / "oturum" / id / "cv_page1.png"
+    if png_path.exists():
+        print(f"[PREVIEW] PNG serving: {png_path}", file=sys.stderr, flush=True)
+        return FileResponse(png_path, media_type="image/png", headers=NO_CACHE)
+
+    # Yoksa HTML serve et
     p = render_cv.HTML_OUT
     if not p.exists():
-        return HTMLResponse("<p>Onizleme yok. Once /render cagir.</p>",
-                            status_code=404, headers=NO_CACHE)
+        return HTMLResponse("<html><body><p>Yükleniyor...</p></body></html>",
+                            status_code=200, headers=NO_CACHE)
     return FileResponse(p, media_type="text/html", headers=NO_CACHE)
 
 
