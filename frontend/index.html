@@ -465,6 +465,31 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
       </div>
     </div>
   </div>
+
+  <!-- Notes Modal -->
+  <div id="notesModal" class="modal" style="display:none">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Notlar</h2>
+        <div class="grow"></div>
+        <button class="close-btn" id="closeNotes" aria-label="Kapat">✕</button>
+      </div>
+      <div style="padding:16px">
+        <div style="color:var(--dim);font-size:12px;margin-bottom:8px">Oturum: <span id="notesSessionName" style="color:var(--text);font-weight:600"></span></div>
+        <textarea id="notesInput" placeholder="Notunuzu yazın... (max 1000 karakter)"
+                  style="width:100%;height:200px;padding:12px;border-radius:6px;border:1px solid var(--edge);background:var(--desk);color:var(--text);font:inherit;resize:vertical"
+                  maxlength="1000"></textarea>
+        <div style="color:var(--dim);font-size:11px;margin-top:8px">
+          <span id="noteCharCount">0</span> / 1000
+        </div>
+      </div>
+      <div class="modal-header" style="border-top:1px solid var(--edge-soft);border-bottom:none;padding:12px 20px">
+        <div class="grow"></div>
+        <button id="notesCancel" class="btn-secondary">İptal</button>
+        <button id="notesSave" class="btn-primary">Kaydet</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -679,6 +704,7 @@ function renderSessionList(filtrelenmisList){
       <td><span class="session-meta">${o.bolum} bölüm</span></td>
       <td><span class="session-meta">${durumu}</span></td>
       <td class="session-actions">
+        <button class="session-btn notes" data-id="${o.id}" title="Notlar">${o.notlar ? "💬" : "📝"}</button>
         <button class="session-btn copy" data-id="${o.id}" title="Kopyala">📋</button>
         <button class="session-btn rename" data-id="${o.id}" title="Adını değiştir">✎</button>
         <button class="session-btn delete" data-id="${o.id}" title="Sil">🗑</button>
@@ -721,6 +747,12 @@ function renderSessionList(filtrelenmisList){
     tr.querySelector(".copy").addEventListener("click", (e) => {
       e.stopPropagation();
       copySession(o.id, o.ad || o.id);
+    });
+
+    // Notes
+    tr.querySelector(".notes").addEventListener("click", (e) => {
+      e.stopPropagation();
+      showNotesDialog(o.id, o.ad || o.id, o.notlar || "");
     });
 
     sessionList.appendChild(tr);
@@ -1024,6 +1056,59 @@ function updateSelectAllCheckbox(){
   }
 }
 
+async function showNotesDialog(id, name, currentNotes){
+  const modal = $("#notesModal");
+  const textarea = $("#notesInput");
+  const charCount = $("#noteCharCount");
+  const sessionName = $("#notesSessionName");
+  const saveBtn = $("#notesSave");
+  const cancelBtn = $("#notesCancel");
+  const closeBtn = $("#closeNotes");
+
+  sessionName.textContent = name;
+  textarea.value = currentNotes;
+  charCount.textContent = currentNotes.length;
+  modal.style.display = "flex";
+  textarea.focus();
+
+  // Character counter
+  const updateCount = () => {
+    charCount.textContent = textarea.value.length;
+  };
+  textarea.addEventListener("input", updateCount);
+
+  return new Promise((resolve) => {
+    const handleSave = async () => {
+      modal.style.display = "none";
+      const notlar = textarea.value.trim();
+      hint.textContent = "Not kaydediliyor...";
+      try {
+        const r = await jpost(`/oturum/${id}/notlar`, {notlar});
+        if (r.ok) {
+          await loadOturumlar();
+          hint.textContent = notlar ? "Not kaydedildi" : "Not silindi";
+        } else {
+          hint.textContent = "Not kaydedilemedi: " + (r.error || "Bilinmeyen hata");
+        }
+      } catch (e) {
+        hint.textContent = "Hata: " + e.message;
+      }
+      textarea.removeEventListener("input", updateCount);
+      resolve();
+    };
+
+    const handleCancel = () => {
+      modal.style.display = "none";
+      textarea.removeEventListener("input", updateCount);
+      resolve();
+    };
+
+    saveBtn.onclick = handleSave;
+    cancelBtn.onclick = handleCancel;
+    closeBtn.onclick = handleCancel;
+  });
+}
+
 async function showNewSessionDialog(){
   const dialog = $("#newSessionDialog");
   const input = $("#newSessionInput");
@@ -1278,6 +1363,7 @@ const renameDialog = $("#renameDialog");
 const deleteDialog = $("#deleteDialog");
 const newSessionDialog = $("#newSessionDialog");
 const batchRenameModal = $("#batchRenameModal");
+const notesModal = $("#notesModal");
 renameDialog.addEventListener("click", (e) => {
   if (e.target === renameDialog) renameDialog.style.display = "none";
 });
@@ -1289,6 +1375,9 @@ newSessionDialog.addEventListener("click", (e) => {
 });
 batchRenameModal.addEventListener("click", (e) => {
   if (e.target === batchRenameModal) batchRenameModal.style.display = "none";
+});
+notesModal.addEventListener("click", (e) => {
+  if (e.target === notesModal) notesModal.style.display = "none";
 });
 
 $("#batchRenameBtn").addEventListener("click", showBatchRenameDialog);

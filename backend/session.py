@@ -71,6 +71,7 @@ def meta(oid):
     p = yol(oid) / "meta.json"
     if not p.exists():
         return {"id": str(oid), "ad": str(oid), "kaynak": "",
+                "notlar": "", "not_tarihi": 0,
                 "olusturma": 0, "guncelleme": 0}
     try:
         d = json.loads(p.read_text(encoding="utf-8"))
@@ -79,6 +80,8 @@ def meta(oid):
     d.setdefault("id", str(oid))
     d.setdefault("ad", str(oid))
     d.setdefault("kaynak", "")
+    d.setdefault("notlar", "")
+    d.setdefault("not_tarihi", 0)
     d.setdefault("olusturma", 0)
     d.setdefault("guncelleme", d.get("olusturma", 0))
     return d
@@ -99,6 +102,12 @@ def dokun(oid):
 
 def ad_ver(oid, ad):
     return meta_yaz(oid, ad=(str(ad).strip() or str(oid))[:80])
+
+
+def notlar_yaz(oid, notlar):
+    """Session'a not ekle veya güncelle (max 1000 karakter)."""
+    notlar_str = (str(notlar).strip() or "")[:1000]
+    return meta_yaz(oid, notlar=notlar_str, not_tarihi=int(time.time()) if notlar_str else 0)
 
 
 def batch_ad_degistir(renames):

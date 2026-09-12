@@ -277,6 +277,18 @@ def oturum_batch_ad_degistir(istek: dict):
         return {"ok": False, "error": str(e)}
 
 
+@app.put("/oturum/{id}/notlar")
+def oturum_notlar_yaz(id: str, istek: dict):
+    if not session.var(id):
+        return {"ok": False, "error": "Oturum yok: {!r}".format(id)}
+    notlar = istek.get("notlar", "")
+    try:
+        oturum = session.notlar_yaz(id, notlar)
+        return {"ok": True, "oturum": oturum}
+    except (ValueError, OSError) as e:
+        return {"ok": False, "error": str(e)}
+
+
 # --- komutlar ---------------------------------------------------------
 
 def _tasarim_adimlari(text, adimlar, mevcut_css):
