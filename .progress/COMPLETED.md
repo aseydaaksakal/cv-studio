@@ -134,3 +134,26 @@
 **v0.1.0 is COMPLETE and LIVE** ✅
 
 All acceptance criteria met. Ready for Stage 6d-7h: Advanced Session Features.
+
+---
+
+## v0.2.0 — Advanced Session Management (Stage 6d-7h)
+
+**Release Date:** TBD (in progress)  
+**Type:** Minor Release — Enhanced session operations
+
+### 1.1 Checkbox State Persistence (COMPLETE ✅)
+- [x] localStorage integration with key `cv-studio:selected-sessions`
+- [x] Load selections on modal open
+- [x] Persist selections on checkbox change
+- [x] Clear selections after batch operations
+- [x] Manual testing: Modal close/reopen, page refresh
+- [x] No console errors
+
+**Test Results:**
+- ✅ Selections persist across modal close/reopen
+- ✅ Selections persist across page refresh (F5)
+- ✅ Batch delete clears selections
+- ✅ New session creation clears selections
+- ✅ Select All checkbox integration working
+- ✅ No errors in console

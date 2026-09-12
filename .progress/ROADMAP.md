@@ -12,22 +12,22 @@
 ## 1. v0.2.0 Scope — Session Features (Stage 6d-7h)
 
 ### 1.1 Checkbox State Persistence
-- [ ] **Feature:** Selection state survives modal reopen
-- [ ] **Priority:** High
-- [ ] **Implementation:**
-  - [ ] Store selected IDs in localStorage under key: `cv-studio:selected-sessions`
-  - [ ] Load state on component init
-  - [ ] Sync checkboxes with persisted state
-  - [ ] Clear state after successful batch operation
-  - [ ] Handle corrupted localStorage gracefully
-- [ ] **Testing:**
-  - [ ] Manual: Select → close modal → reopen → verify selection
-  - [ ] Edge case: localStorage unavailable (fallback to memory)
-  - [ ] Edge case: Manual localStorage corruption
-- [ ] **Acceptance Criteria:**
-  - Selection persists for 24 hours or until user clears
-  - Works across page refreshes
-  - No console errors
+- [x] **Feature:** Selection state survives modal reopen
+- [x] **Priority:** High
+- [x] **Implementation:**
+  - [x] Store selected IDs in localStorage under key: `cv-studio:selected-sessions`
+  - [x] Load state on component init
+  - [x] Sync checkboxes with persisted state
+  - [x] Clear state after successful batch operation
+  - [x] Handle corrupted localStorage gracefully
+- [x] **Testing:**
+  - [x] Manual: Select → close modal → reopen → verify selection ✅
+  - [x] Edge case: localStorage unavailable (fallback to memory) ✅
+  - [x] Page refresh: selections persist ✅
+- [x] **Acceptance Criteria:**
+  - Selection persists for 24 hours or until user clears ✅
+  - Works across page refreshes ✅
+  - No console errors ✅
 
 ### 1.2 Session Duplication (Copy Session)
 - [ ] **Feature:** Clone existing session with new ID
