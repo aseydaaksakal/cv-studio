@@ -255,12 +255,21 @@ async def upload(dosya: UploadFile = File(...), ad: str = Form("")):
 
             # İşlem bitti - session'ı güncelle
             session.sec(yeni_id)
+
             # CV'yi load et (disk'ten oku)
             try:
                 cv_data = commands.load()
                 print(f"[UPLOAD] CV yüklendi: {len(cv_data.get('work', []))} deneyim", file=sys.stderr)
             except Exception as e:
                 print(f"[UPLOAD] CV load hatası: {e}", file=sys.stderr)
+
+            # HTML preview'ı render et
+            try:
+                render_cv.render()
+                print(f"[UPLOAD] HTML render edildi", file=sys.stderr)
+            except Exception as e:
+                print(f"[UPLOAD] Render hatası: {e}", file=sys.stderr)
+
         except Exception as e:
             print(f"[UPLOAD] Arka plan hatası: {e}", file=sys.stderr)
 
