@@ -10,13 +10,12 @@
 
 import { pickLanguage, toMono } from "./core.js";
 
-/** Fallback list, used only when the real catalogue cannot be fetched. */
+/** Fallback list, used only when the real catalogue cannot be fetched. Kept to proven browser-safe models (<5GB). */
 export const LOCAL_MODELS = [
-  ["Qwen2.5-1.5B-Instruct-q4f16_1-MLC", "Qwen 2.5 1.5B — ~1.1 GB · edits only, parsing loses detail"],
-  ["Qwen2.5-3B-Instruct-q4f16_1-MLC", "Qwen 2.5 3B — ~2.0 GB · minimum for reliable editing"],
-  ["Llama-3.2-3B-Instruct-q4f16_1-MLC", "Llama 3.2 3B — ~2.0 GB"],
-  ["Qwen2.5-7B-Instruct-q4f16_1-MLC", "Qwen 2.5 7B — ~4.5 GB · recommended, parses a full CV well"],
-  ["Llama-3.1-8B-Instruct-q4f16_1-MLC", "Llama 3.1 8B — ~5.0 GB"],
+  ["Qwen2.5-1.5B-Instruct-q4f16_1-MLC", "Qwen 2.5 1.5B — ~1.1 GB · edits only"],
+  ["Qwen2.5-3B-Instruct-q4f16_1-MLC", "Qwen 2.5 3B — ~2.0 GB · editing + parsing"],
+  ["Llama-3.2-3B-Instruct-q4f16_1-MLC", "Llama 3.2 3B — ~2.0 GB · alternative"],
+  ["Qwen2.5-7B-Instruct-q4f16_1-MLC", "Qwen 2.5 7B — ~4.5 GB · recommended, best quality"],
   ["__custom__", "Other — type an MLC model id"],
 ];
 
