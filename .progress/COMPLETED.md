@@ -196,6 +196,27 @@ All acceptance criteria met. Ready for Stage 6d-7h: Advanced Session Features.
 - ✅ Integration with checkbox persistence (Feature #1) working
 - ✅ Error handling for invalid/missing sessions
 
+### 1.4 Session Comments / Notes (COMPLETE ✅)
+- [x] Backend endpoint: `POST /oturum/{id}/notlar`
+- [x] Add `notes` field to session meta.json (default: "")
+- [x] Store `not_tarihi` (notes timestamp)
+- [x] Accept: `{notlar: string}` (max 1000 chars)
+- [x] Update meta.json, return updated oturum
+- [x] Frontend "💬" / "📝" button per session
+- [x] Modal with textarea for notes
+- [x] Character counter (X / 1000)
+- [x] Auto-save on button click
+- [x] Show last-modified timestamp
+
+**Test Results:**
+- ✅ Notes button visible on all sessions (💬 if has notes, 📝 if empty)
+- ✅ Modal opens with textarea and character counter
+- ✅ Notes save to backend and persist
+- ✅ Notes appear in session meta.json
+- ✅ Max 1000 characters enforced
+- ✅ Notes preview shows in UI
+- ✅ No console errors
+
 ### 1.5 Export Sessions (COMPLETE ✅)
 - [x] Backend endpoint: `POST /oturum/export`
 - [x] Accept: `{ids: [string]}`
@@ -214,4 +235,27 @@ All acceptance criteria met. Ready for Stage 6d-7h: Advanced Session Features.
 - ✅ No console errors
 - ✅ Integration with checkbox persistence working
 
+---
+
+## v0.2.0 Summary
+
+**Release Date:** 2026-09-12  
+**Status:** COMPLETE ✅ — All 5 features implemented and tested
+
 **v0.2.0 Progress: 5/5 features complete (100%) ✅**
+
+### All Features Delivered:
+1. ✅ Checkbox State Persistence (localStorage)
+2. ✅ Session Duplication (Copy with auto-naming)
+3. ✅ Batch Rename (Atomic multi-session updates)
+4. ✅ Session Notes/Comments (with character limit & timestamps)
+5. ✅ Export Sessions (ZIP download)
+
+### Quality Metrics:
+- 100% acceptance criteria met
+- All manual tests passed
+- Zero console errors
+- Full feature integration working
+- Bug fix applied (HTTP method alignment: PUT → POST)
+
+**v0.2.0 Ready for Production** ✅
