@@ -279,7 +279,7 @@ def oturum_batch_ad_degistir(istek: dict):
         return {"ok": False, "error": str(e)}
 
 
-@app.put("/oturum/{id}/notlar")
+@app.post("/oturum/{id}/notlar")
 def oturum_notlar_yaz(id: str, istek: dict):
     if not session.var(id):
         return {"ok": False, "error": "Oturum yok: {!r}".format(id)}
