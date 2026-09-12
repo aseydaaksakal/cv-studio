@@ -1,88 +1,154 @@
-# 📋 Yapılacaklar — cv-studio Project
+# 📋 Yapılacaklar — cv-studio Projesi
 
-## Stage 6d-7h: Advanced Session Management
+## Aşama 6d-7h: Gelişmiş Oturum Yönetimi (v0.2.0)
 
-### 1. Checkbox State Persistence
-- [ ] Checkbox selections modal reopen'da korunacak
-- [ ] localStorage veya sessionStorage'da state sakla
-- [ ] Modal açılırken state restore et
-- [ ] Test: Selection persists across modal open/close
-
-### 2. Session Duplication (Copy Session)
-- [ ] Backend endpoint: `POST /oturum/kopyala/{id}`
-- [ ] Create copy of session with new ID
-- [ ] Copy all files from source to destination
-- [ ] Frontend button: "📋 Kopyala" (Copy)
-- [ ] Test: Copied session has all original files
-
-### 3. Batch Rename
-- [ ] Backend endpoint: `POST /oturum/batch-ad-degistir`
-- [ ] Accept list of {id, newName} objects
-- [ ] Update session names in meta.json
-- [ ] Frontend: "Rename" button → inline edit mode
-- [ ] Test: Multiple sessions renamed atomically
-
-### 4. Session Comments / Notes
-- [ ] Add "notes" field to session meta.json
-- [ ] Backend: `PUT /oturum/{id}/notlar` — Update notes
-- [ ] Frontend: "💬 Notlar" button → modal with textarea
-- [ ] Display comment preview in session list
-- [ ] Test: Notes persisted across sessions
-
-### 5. Export Sessions
-- [ ] Backend endpoint: `POST /oturum/export`
-- [ ] Accept list of session IDs
-- [ ] Create ZIP archive with selected sessions
-- [ ] Include all files + meta.json
-- [ ] Return download link
-- [ ] Frontend button: "📦 Export"
-- [ ] Test: ZIP contains all session data
+**Planlanan Tarih:** 2026-09-15  
+**Sürüm Türü:** Minor — Kalite ve ileri özellikler
 
 ---
 
-## Stage 6d-7i: Web Edition Enhancements (TBD)
+### 1. Seçim Durumu Kalıcılığı (Checkbox State Persistence)
 
-### 1. Web Edition Updates
-- [ ] Sync session checkboxes to web edition (if applicable)
-- [ ] Implement copy/duplicate for web
-- [ ] Session export from web
-- [ ] GitHub Pages deployment sync
-
-### 2. Performance & Optimization
-- [ ] Lazy load session data
-- [ ] Optimize API calls for batch operations
-- [ ] Cache session list (with invalidation)
-
----
-
-## General Improvements (Backlog)
-
-### Bug Fixes
-- [ ] Checkbox event listener timing (low priority)
-- [ ] Optimize re-render on session list update
-
-### Code Quality
-- [ ] Add JSDoc comments to main JS functions
-- [ ] Refactor session state management
-- [ ] Add error boundary for modal operations
-
-### Documentation
-- [ ] Update README.md with new features
-- [ ] Add API documentation for new endpoints
-- [ ] User guide for batch operations
+- [ ] **Özellik:** Checkbox seçimleri modal kapandıktan sonra korunacak
+- [ ] **Öncelik:** Yüksek
+- [ ] **Uygulama:**
+  - [ ] localStorage'a seçili oturum ID'lerini kaydet (`cv-studio:selected-sessions`)
+  - [ ] Modal açılırken state'i yükle
+  - [ ] Checkbox'ları kaydedilen state'e senkronize et
+  - [ ] Başarılı batch işlemden sonra state'i temizle
+  - [ ] localStorage kullanılamıyorsa fallback yap
+- [ ] **Test:**
+  - [ ] Manuel: Seç → modal kapat → aç → seçim kontrol et
+  - [ ] Edge case: localStorage yoksa memory'de çalış
+  - [ ] Edge case: Bozuk localStorage'ı handle et
 
 ---
 
-## Release Planning
+### 2. Oturum Çoğaltma (Session Duplication / Copy)
 
-### v1.0.0 Target
-- Stage 6d-7h (Advanced Session Management)
-- Stage 6d-7i (Web Edition Sync)
-- All tests green
-- Live deployment verified
+- [ ] **Özellik:** Var olan oturumu yeni ID'yle klonla
+- [ ] **Öncelik:** Yüksek
+- [ ] **Backend:**
+  - [ ] Endpoint: `POST /oturum/{id}/kopyala`
+  - [ ] Kaynak oturumu valide et
+  - [ ] Yeni oturum ID'si oluştur
+  - [ ] Tüm dosyaları kaynaktan hedefe rekursif kopyala
+  - [ ] Oturum adını güncelle: "{Orijinal} (Kopya)"
+  - [ ] Dön: `{ok: true, id: newId, oturum: object}`
+- [ ] **Frontend:**
+  - [ ] Her oturum satırında "📋 Kopyala" butonu
+  - [ ] Tooltip: "Bu oturumu kopyala"
+  - [ ] Onay dialog'u
+  - [ ] Kopyalama sırasında spinner göster
+  - [ ] Başarıda listeyi yenile
+- [ ] **Test:**
+  - [ ] Kopya oturumun tüm dosyaları var
+  - [ ] Orijinal oturum değişmemiş
+  - [ ] Yeni ID benzersiz ve geçerli
 
-### v1.1.0 (Future)
-- Advanced filtering
-- Session search
-- Tagging system
-- Archive old sessions
+---
+
+### 3. Toplu Ad Değiştirme (Batch Rename)
+
+- [ ] **Özellik:** Birden fazla oturumun adını atomik olarak değiştir
+- [ ] **Öncelik:** Orta
+- [ ] **Backend:**
+  - [ ] Endpoint: `POST /oturum/batch-ad-degistir`
+  - [ ] İstek: `{renames: [{id: string, newName: string}]}`
+  - [ ] Tüm ID'leri valide et
+  - [ ] Her oturum için meta.json güncelle
+  - [ ] Dön: `{ok: true, oturumlar: array}`
+  - [ ] Herhangi bir hata'da rollback yap (all-or-nothing)
+- [ ] **Frontend:**
+  - [ ] "Rename" butonu sadece seçili oturumlar varken görün
+  - [ ] Modal: Oturum Adı | Yeni Ad (input)
+  - [ ] Satır içi editing
+  - [ ] Değişiklikleri önizle
+  - [ ] Toplu uygula
+
+---
+
+### 4. Oturum Yorumları / Notlar (Session Comments)
+
+- [ ] **Özellik:** Oturumlara kalıcı notlar/açıklamalar ekle
+- [ ] **Öncelik:** Orta
+- [ ] **Backend:**
+  - [ ] `notes` alanı session meta.json'a ekle (default: "")
+  - [ ] GET /oturum/{id} → `notes` döndür
+  - [ ] Endpoint: `PUT /oturum/{id}/notlar`
+  - [ ] İstek: `{notlar: string}` (max 1000 karakter)
+  - [ ] Son değiştirilme zamanını kaydeet
+- [ ] **Frontend:**
+  - [ ] Her oturum satırında "💬 Notlar" butonu
+  - [ ] Tıkla → textarea modal'ı
+  - [ ] Not önizlemesi listede göster (50 karakter)
+  - [ ] Auto-save blur'da
+  - [ ] Karakter sayacı: X / 1000
+
+---
+
+### 5. Oturumları Dışa Aktarma (Export Sessions)
+
+- [ ] **Özellik:** Oturumları ZIP arşiv olarak indir
+- [ ] **Öncelik:** Düşük
+- [ ] **Backend:**
+  - [ ] Endpoint: `POST /oturum/export`
+  - [ ] İstek: `{ids: [string]}`
+  - [ ] Geçici ZIP dosyası oluştur
+  - [ ] Tüm oturum dosyaları + meta.json ekle
+  - [ ] Standart ZIP format'ı kullan
+  - [ ] Download link'i döndür
+  - [ ] İndirmeden sonra temp dosyayı sil
+- [ ] **Frontend:**
+  - [ ] "📦 Export" butonu (seçili oturumlar varken)
+  - [ ] Tıkla → POST /oturum/export
+  - [ ] Download progress göster
+  - [ ] Browser download'u tetikle
+
+---
+
+## Aşama 6d-7i: Web Sürümü Geliştirmeleri (v0.3.0)
+
+**Planlanan Tarih:** 2026-09-22
+
+### 1. Web Sürümü Güncellemeleri
+- [ ] Web sürümüne checkbox'ları ekle
+- [ ] Web'de oturum kopyalama
+- [ ] Web'den ZIP export
+- [ ] Sürümler arası senkronizasyon
+
+### 2. Performans Optimizasyonları
+- [ ] Lazy load oturum verileri
+- [ ] Batch API pagination (50 session/istek)
+- [ ] Oturum listesi cache (5 dakika TTL)
+- [ ] Search input debounce
+
+---
+
+## Genel İyileştirmeler (Backlog)
+
+### Hata Düzeltmeleri
+- [ ] Checkbox event listener timing (düşük öncelik)
+- [ ] Session listesi re-render optimizasyonu
+
+### Kod Kalitesi
+- [ ] JS fonksiyonlarına JSDoc yorumları ekle
+- [ ] Session state yönetimini refactor et
+- [ ] Modal işlemleri için error boundary ekle
+
+### Dokümantasyon
+- [ ] README.md'yi yeni özelliklerle güncelle
+- [ ] API dokümantasyonu (OpenAPI/Swagger)
+- [ ] Batch işlemleri kullanıcı kılavuzu
+
+---
+
+## Sürüm Zaman Çizelgesi
+
+```
+v0.1.0 ✅ (2026-09-12)  — Temel oturum işlemleri
+v0.2.0 ⏳ (2026-09-15)  — Gelişmiş özellikler (5 feature)
+v0.3.0 📅 (2026-09-22)  — Web senkronizasyonu + Performans
+v1.0.0 🎯 (2026-10-01)  — Production sürümü (tests, docs, security)
+v1.1.0+ 🚀 (Gelecek)     — Taglama, arşivleme, işbirliği
+```
