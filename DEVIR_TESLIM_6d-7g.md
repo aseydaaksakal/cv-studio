@@ -288,7 +288,7 @@ def oturum_batch_sil(istek: dict):
 
 ## 📞 Contact & Questions
 
-- **Developer:** Claude (Haiku 4.5)
+- **AI Operatör:** Claude (Haiku 4.5) — Abdullah Seyda Aksakal
 - **Repository:** https://github.com/aseydaaksakal/cv-studio
 - **Issues:** GitHub Issues
 - **Live Demo:** https://aseydaaksakal.github.io/cv-studio/
