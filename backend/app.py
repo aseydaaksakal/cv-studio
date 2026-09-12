@@ -17,6 +17,7 @@ Calistirma (backend klasorunden):
 """
 
 import base64
+import io
 import json
 import os
 import secrets
@@ -593,6 +594,32 @@ class CompleteRequest(BaseModel):
     system: str
     user: str
     model: str = ""
+
+@app.post("/api/parse-cv")
+async def parse_cv(file: UploadFile = File(...)):
+    """Parse CV file (PDF/DOCX/HTML/JSON) - extract text without needing local AI model."""
+    try:
+        content = await file.read()
+        filename = file.filename.lower()
+        text = ""
+
+        if filename.endswith(".pdf"):
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(content))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        elif filename.endswith(".docx"):
+            from docx import Document
+            doc = Document(io.BytesIO(content))
+            text = "\n".join(p.text for p in doc.paragraphs)
+        else:
+            text = content.decode('utf-8', errors='ignore')
+
+        if not text.strip():
+            return {"ok": False, "error": "No text found in file"}
+
+        return {"ok": True, "text": text[:50000], "filename": file.filename}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 @app.post("/api/ollama-complete")
 def ollama_complete(request: CompleteRequest):
