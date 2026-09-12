@@ -262,7 +262,12 @@ async function startRecording(transcribe) {
 }
 
 async function transcribeLocally(blob) {
-  return localTranscribe(localWhisperId(settings.localwhisper), blob, (msg, pct) => micStatus(pct ? `${msg} ${pct}%` : msg));
+  try {
+    return await localTranscribe(localWhisperId(settings.localwhisper), blob, (msg, pct) => micStatus(pct ? `${msg} ${pct}%` : msg));
+  } catch (e) {
+    console.error("Transcription error:", e);
+    throw e;
+  }
 }
 
 async function transcribeWithDesktop(blob) {
@@ -816,6 +821,8 @@ if (sessions.length > 0) {
 // Pre-load Whisper model in background for instant microphone access
 if (settings.engine === "local") {
   import("./engines.js").then(({ localTranscriber, localWhisperId }) => {
-    localTranscriber(localWhisperId(settings.localwhisper), () => {}).catch(() => {});
+    localTranscriber(localWhisperId(settings.localwhisper), () => {}).catch((e) => {
+      console.error("Whisper pre-load failed:", e);
+    });
   });
 }
