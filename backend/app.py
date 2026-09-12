@@ -186,8 +186,10 @@ def state(id: str = ""):
 @app.post("/upload")
 async def upload(dosya: UploadFile = File(...), ad: str = Form("")):
     """PDF/DOCX'i boyut kontrollu kaydeder, yeni bir oturumda işler - hemen döner, arka planda işler."""
+    import sys
+    print(f"[UPLOAD] === BAŞLANGÍÇ ===", file=sys.stderr, flush=True)
     try:
-        print(f"[UPLOAD] Başlangıç - dosya: {dosya.filename}", file=sys.stderr, flush=True)
+        print(f"[UPLOAD] Dosya: {dosya.filename}", file=sys.stderr, flush=True)
         ad_dosya = dosya.filename or ""
         uz = Path(ad_dosya).suffix.lower()
         if uz not in pipeline.desteklenen():
