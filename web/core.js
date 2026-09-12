@@ -468,6 +468,30 @@ export function listActiveSessions() {
   return listSessions().filter((s) => !s.archived);
 }
 
+export function batchArchiveSessions(ids) {
+  ids.forEach(id => archiveSession(id));
+}
+
+export function batchUnarchiveSessions(ids) {
+  ids.forEach(id => unarchiveSession(id));
+}
+
+export function clearAllSessions() {
+  const allSessions = listSessions();
+  allSessions.forEach(s => deleteSession(s.id));
+}
+
+export function getSessionStats() {
+  const all = listSessions();
+  const archived = all.filter(s => s.archived).length;
+  return {
+    total: all.length,
+    active: all.length - archived,
+    archived,
+    totalNotes: all.filter(s => s.notes).length,
+  };
+}
+
 /* ───────────────────────── dark mode theme management ───────────────────────── */
 
 const THEME_KEY = "cvstudio:theme";
