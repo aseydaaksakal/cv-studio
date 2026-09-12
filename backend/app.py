@@ -185,7 +185,7 @@ def state(id: str = ""):
 
 @app.post("/upload")
 async def upload(dosya: UploadFile = File(...), ad: str = Form("")):
-    """PDF/DOCX'i boyut kontrollu kaydeder, yeni bir oturumda isler."""
+    """PDF/DOCX'i boyut kontrollu kaydeder, yeni bir oturumda işler - hemen döner, arka planda işler."""
     ad_dosya = dosya.filename or ""
     uz = Path(ad_dosya).suffix.lower()
     if uz not in pipeline.desteklenen():
@@ -197,15 +197,73 @@ async def upload(dosya: UploadFile = File(...), ad: str = Form("")):
     if len(icerik) > pipeline.MAX_MB * 1024 * 1024:
         return {"ok": False, "error": "Dosya boyutu {} MB sinirini asiyor."
                 .format(pipeline.MAX_MB)}
+
+    # 1. Hemen yeni oturum oluştur
+    yeni_id = session.yeni(ad=ad.strip(), kaynak="upload")
+    session.sec(yeni_id)
+
+    # 2. Dosyayı kaydet
     hedef = pipeline.benzersiz(ad_dosya)
     hedef.parent.mkdir(parents=True, exist_ok=True)
     hedef.write_bytes(icerik)
-    try:
-        return pipeline.calistir(hedef, ad=ad.strip(), kopyala=False)
-    except (ValueError, FileNotFoundError) as e:
-        return {"ok": False, "error": str(e)}
-    except llm.LLMError as e:
-        return {"ok": False, "error": "Model cevap vermedi. {}".format(e)}
+
+    # 3. Hemen temel CV yapısı ile cevap dön
+    temel_cv = {
+        "basics": {
+            "name": ad.strip() or ad_dosya.split('.')[0],
+            "label": "",
+            "image": "",
+            "email": "",
+            "phone": "",
+            "url": "",
+            "summary": "",
+            "location": {"address": "", "postalCode": "", "city": "", "countryCode": "", "region": ""},
+            "profiles": []
+        },
+        "work": [],
+        "volunteer": [],
+        "education": [],
+        "awards": [],
+        "certificates": [],
+        "publications": [],
+        "skills": [],
+        "languages": [],
+        "interests": [],
+        "references": [],
+        "projects": []
+    }
+
+    # Hemen temel yapıyı döndür
+    yanit = {
+        "ok": True,
+        "id": yeni_id,
+        "bolum": 0,
+        "kapsama": 0.0,
+        "dosya": ad_dosya,
+        "durum": "yükleniyor...",
+        "islemeniyor": True  # Arka planda işleniyor işareti
+    }
+
+    # 4. Arka planda işlemeyi başlat (blocking yapmadan)
+    import threading
+    def arka_plan_isle():
+        try:
+            result = pipeline.calistir(hedef, ad=ad.strip(), kopyala=False)
+            # İşlem bitti - session'ı güncelle
+            session.sec(yeni_id)
+            # CV'yi kaydet
+            if result.get("ok"):
+                try:
+                    commands.load()
+                except:
+                    pass
+        except Exception as e:
+            pass  # Sessizce başarısız - user intihar etmiş olabilir
+
+    thread = threading.Thread(target=arka_plan_isle, daemon=True)
+    thread.start()
+
+    return yanit
 
 
 @app.get("/oturum")

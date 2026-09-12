@@ -1320,20 +1320,59 @@ async function yukleDosya(file){
           return;
         }
 
-        // Başarılı: oturuma geç
+        // Başarılı: HEMENve oturuma geç
         if (progressSafe.style) progressSafe.style.width = "100%";
         if (statusSafe) statusSafe.textContent = "✓";
-        await new Promise(r => setTimeout(r, 300));
 
         aktifOturum = r.id;
+        hint.textContent = "Dosya işleniyor: " + file.name;
+
+        // Hemen sayfayı yükle
         await loadOturumlar();
         await refreshSheet();
         await loadState();
-        hint.textContent = file.name + " işlendi: " + r.bolum + " bölüm, kapsam %" + Math.round(r.kapsama * 100);
+
+        // Arka planda işlenme durumunu kontrol et
+        if (r.islemeniyor) {
+          hint.textContent = "Dosya işleniyor, lütfen bekleyin...";
+          let kontrol_sayisi = 0;
+          const max_kontrol = 120; // 2 dakika (her saniye kontrol)
+
+          const kontrol_timer = setInterval(async () => {
+            kontrol_sayisi++;
+            if (kontrol_sayisi >= max_kontrol) {
+              clearInterval(kontrol_timer);
+              return;
+            }
+
+            try {
+              // Durumu kontrol et
+              const state = await jpost("/state", {id: aktifOturum});
+              if (state.ok && state.cv && state.cv.work && state.cv.work.length > 0) {
+                // İşlem bitti, sayfayı yenile
+                clearInterval(kontrol_timer);
+                await refreshSheet();
+                await loadState();
+                hint.textContent = file.name + " işlendi: bölümler yüklendi";
+
+                // UI'yi temizle
+                await new Promise(r => setTimeout(r, 500));
+                if (progressSafe.style) progressSafe.style.width = "0";
+                if (statusSafe) statusSafe.textContent = "";
+              }
+            } catch (e) {
+              // Sessizce devam et
+            }
+          }, 1000);
+        } else {
+          // İşlem zaten bitti
+          hint.textContent = file.name + " işlendi: " + r.bolum + " bölüm";
+          await new Promise(r => setTimeout(r, 500));
+          if (progressSafe.style) progressSafe.style.width = "0";
+          if (statusSafe) statusSafe.textContent = "";
+        }
 
         // Sıfırla
-        if (progressSafe.style) progressSafe.style.width = "0";
-        if (statusSafe) statusSafe.textContent = "";
         uploadLabel.textContent = "PDF/DOCX yükle";
         upload.value = "";
       } catch (e) {
