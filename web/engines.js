@@ -108,7 +108,7 @@ export async function localChat(model, onProgress = () => {}) {
       const created = await webllm.CreateMLCEngine(model, {
         initProgressCallback: (p) => {
           // Only show progress percentage, skip verbose "Fetching param cache" messages
-          if (p.progress !== undefined) onProgress(`Downloading ${Math.round((p.progress || 0) * 100)}%`, Math.round((p.progress || 0) * 100));
+          if (p.progress !== undefined) onProgress(`Downloading ${Math.round((p.progress || 0) * 100)}%`);
         },
       });
       engine = created; engineModel = model;
@@ -149,7 +149,7 @@ export async function localTranscriber(model, onProgress = () => {}) {
     const { pipeline, env } = tf;
     env.allowLocalModels = false;
     onProgress("Downloading…", 0);
-    const progress_callback = (p) => { if (p.status === "progress") onProgress(`Downloading ${Math.round(p.progress || 0)}%`, 0); };
+    const progress_callback = (p) => { if (p.status === "progress") onProgress(`Downloading ${Math.round((p.progress || 0) * 100)}%`); };
     const onGPU = { device: "webgpu", dtype: { encoder_model: "fp32", decoder_model_merged: "q4" }, progress_callback };
     const onCPU = { device: "wasm", dtype: "q8", progress_callback };
     /* Ask for the adapter before choosing, so a machine without one downloads the CPU build only.
