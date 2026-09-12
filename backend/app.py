@@ -20,6 +20,8 @@ import base64
 import json
 import os
 import secrets
+import tempfile
+import zipfile
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Response, UploadFile
@@ -286,6 +288,37 @@ def oturum_notlar_yaz(id: str, istek: dict):
         oturum = session.notlar_yaz(id, notlar)
         return {"ok": True, "oturum": oturum}
     except (ValueError, OSError) as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/oturum/export")
+def oturum_export(istek: dict):
+    """Export selected sessions as ZIP archive."""
+    ids = istek.get("ids", [])
+    if not isinstance(ids, list):
+        return {"ok": False, "error": "ids bir liste olmalıdır"}
+    if not ids:
+        return {"ok": False, "error": "Hiçbir oturum seçilmedi"}
+
+    for oid in ids:
+        if not session.var(oid):
+            return {"ok": False, "error": "Oturum yok: {!r}".format(oid)}
+
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+            zip_path = tmp.name
+
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for oid in ids:
+                oturum_yol = session.yol(oid)
+                for dosya in oturum_yol.rglob("*"):
+                    if dosya.is_file():
+                        arcname = f"{oid}/{dosya.relative_to(oturum_yol)}"
+                        zf.write(dosya, arcname)
+
+        return FileResponse(zip_path, media_type="application/zip",
+                          filename="cv-studio-export.zip", headers=NO_CACHE)
+    except Exception as e:
         return {"ok": False, "error": str(e)}
 
 

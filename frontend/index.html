@@ -378,6 +378,7 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
         <div class="grow"></div>
         <button class="session-btn primary" id="newSessionBtn" title="Yeni oturum oluştur">+ Yeni</button>
         <button class="session-btn primary" id="batchRenameBtn" title="Seçili oturumları yeniden adlandır" style="display:none">✏ Yeniden Adlandır</button>
+        <button class="session-btn primary" id="batchExportBtn" title="Seçili oturumları indir (ZIP)" style="display:none">📦 İndir</button>
         <button class="session-btn danger" id="batchDeleteBtn" title="Seçili oturumları sil" style="display:none">🗑 Sil</button>
         <button class="close-btn" id="closeSession" aria-label="Kapat">✕</button>
       </div>
@@ -681,6 +682,16 @@ function updateBatchRenameBtn(){
   }
 }
 
+function updateBatchExportBtn(){
+  const batchBtn = $("#batchExportBtn");
+  if (seciliOturumlar.size > 0) {
+    batchBtn.style.display = "inline-block";
+    batchBtn.textContent = `📦 İndir (${seciliOturumlar.size})`;
+  } else {
+    batchBtn.style.display = "none";
+  }
+}
+
 function renderSessionList(filtrelenmisList){
   sessionList.innerHTML = "";
   if (!filtrelenmisList.length) {
@@ -722,6 +733,7 @@ function renderSessionList(filtrelenmisList){
       }
       updateBatchDeleteBtn();
       updateBatchRenameBtn();
+      updateBatchExportBtn();
       updateSelectAllCheckbox();
       persistSelections();
     });
@@ -1191,6 +1203,43 @@ async function batchDeleteSessions(){
     deleteCancel.onclick = handleCancel;
   });
 }
+
+async function batchExportSessions(){
+  if (seciliOturumlar.size === 0) return;
+
+  const ids = Array.from(seciliOturumlar);
+  const count = ids.length;
+  hint.textContent = `${count} oturum indiriliyor...`;
+
+  try {
+    const response = await fetch("/oturum/export", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ids})
+    });
+
+    if (!response.ok) {
+      const r = await response.json();
+      hint.textContent = "İndirme başarısız: " + (r.error || "Bilinmeyen hata");
+      return;
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "cv-studio-export.zip";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    hint.textContent = `${count} oturum indirildi`;
+  } catch (e) {
+    hint.textContent = "İndirme hatası: " + e.message;
+  }
+}
+
 async function yukleDosya(file){
   if (!file) return;
 
@@ -1381,6 +1430,7 @@ notesModal.addEventListener("click", (e) => {
 });
 
 $("#batchRenameBtn").addEventListener("click", showBatchRenameDialog);
+$("#batchExportBtn").addEventListener("click", batchExportSessions);
 
 /* ---------- sira: arka planda tek tek calisir ---------- */
 const queue = [];
