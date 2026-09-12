@@ -165,6 +165,106 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
   font:12.5px/1.55 var(--mono);white-space:pre-wrap;color:#c2ccd4;
 }
 .item[data-open="true"] .think{display:block}
+
+/* ---- session modal ---- */
+.modal{
+  position:fixed;left:0;top:0;right:0;bottom:0;
+  background:rgba(0,0,0,.5);z-index:100;
+  display:flex;align-items:flex-start;justify-content:center;
+  padding-top:40px;overflow-y:auto;
+}
+.modal-content{
+  background:var(--panel);border:1px solid var(--edge);border-radius:12px;
+  width:90%;max-width:700px;box-shadow:0 24px 48px rgba(0,0,0,.8);
+}
+.modal-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;border-bottom:1px solid var(--edge-soft);
+}
+.modal-header h2{margin:0;font-size:16px;font-weight:600}
+.close-btn{
+  width:32px;height:32px;border-radius:6px;
+  color:var(--dim);background:none;border:1px solid var(--edge);
+  cursor:pointer;font:18px/1 monospace;
+}
+.close-btn:hover{color:var(--text);border-color:var(--accent)}
+.modal-search{
+  padding:12px 16px;border-bottom:1px solid var(--edge-soft)
+}
+.modal-search input{
+  width:100%;padding:8px 12px;border-radius:6px;
+  border:1px solid var(--edge);background:var(--desk);
+  color:var(--text);font:inherit;
+}
+.modal-search input::placeholder{color:#6d7983}
+.modal-body{
+  max-height:500px;overflow-y:auto;padding:0
+}
+.session-table{
+  width:100%;border-collapse:collapse;font-size:13px
+}
+.session-table th{
+  padding:10px 12px;text-align:left;font-weight:600;
+  background:var(--edge-soft);border-bottom:1px solid var(--edge);
+  color:var(--text);
+}
+.session-table td{
+  padding:10px 12px;border-bottom:1px solid var(--edge-soft);
+  color:var(--text);
+}
+.session-table tr:hover{background:var(--edge-soft)}
+.session-table tr.active{background:rgba(143,176,216,.1)}
+.session-name{font-weight:600;color:var(--accent);cursor:pointer}
+.session-name:hover{text-decoration:underline}
+.session-meta{color:var(--dim);font-size:12px}
+.session-actions{
+  display:flex;gap:6px;align-items:center;justify-content:flex-end
+}
+.session-btn{
+  padding:4px 8px;font-size:11px;border-radius:4px;
+  border:1px solid var(--edge);color:var(--dim);
+  background:none;cursor:pointer;
+}
+.session-btn:hover{color:var(--text);border-color:var(--accent)}
+.session-btn.delete{color:#e0605a}
+.session-btn.delete:hover{border-color:#e0605a}
+
+/* ---- dialog ---- */
+.dialog-content{
+  background:var(--panel);border:1px solid var(--edge);border-radius:12px;
+  width:90%;max-width:400px;padding:0;
+  box-shadow:0 24px 48px rgba(0,0,0,.8);
+}
+.dialog-header{
+  padding:16px 20px;border-bottom:1px solid var(--edge-soft)
+}
+.dialog-header h3{margin:0;font-size:16px;font-weight:600}
+.dialog-content input{
+  width:100%;padding:12px 20px;border:none;
+  background:var(--desk);color:var(--text);font:inherit;
+  box-sizing:border-box;
+}
+.dialog-content input::placeholder{color:#6d7983}
+.dialog-actions{
+  display:flex;gap:8px;justify-content:flex-end;
+  padding:16px 20px;border-top:1px solid var(--edge-soft)
+}
+.dialog-actions button{
+  padding:8px 16px;border-radius:6px;border:none;
+  font:13px inherit;cursor:pointer;font-weight:600
+}
+.btn-primary{
+  background:var(--accent);color:#12171c
+}
+.btn-primary:hover{opacity:.9}
+.btn-secondary{
+  background:var(--edge);color:var(--text)
+}
+.btn-secondary:hover{border-color:var(--accent)}
+.btn-danger{
+  background:#c83e3e;color:#fff
+}
+.btn-danger:hover{opacity:.9}
 </style>
 </head>
 <body>
@@ -179,7 +279,7 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
     </label>
     <input id="upload" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
     <div class="upload-error" id="uploadError"></div>
-    <select id="oturum" title="CV oturumu"><option>Oturumlar yükleniyor</option></select>
+    <button class="tool" id="sessionBtn" title="Oturumları yönet">Oturumlar</button>
     <div id="who">yükleniyor</div>
     <div class="grow"></div>
     <div class="tools">
@@ -243,6 +343,64 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
       <div id="log"><div id="empty">Henüz değişiklik yok. Aşağıya bir komut yaz.</div></div>
     </aside>
   </main>
+
+  <!-- Session Selector Modal -->
+  <div id="sessionModal" class="modal" style="display:none">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Oturumlarım</h2>
+        <button class="close-btn" id="closeSession" aria-label="Kapat">✕</button>
+      </div>
+      <div class="modal-search">
+        <input type="text" id="sessionSearch" placeholder="Oturum adında ara...">
+      </div>
+      <div class="modal-body">
+        <table class="session-table" id="sessionTable">
+          <thead>
+            <tr>
+              <th>Ad</th>
+              <th>Kaynak</th>
+              <th>Bölümler</th>
+              <th>Durumu</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="sessionList"></tbody>
+        </table>
+        <div id="sessionEmpty" style="display:none;text-align:center;padding:24px;color:var(--dim)">
+          Henüz oturum yok
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rename Dialog -->
+  <div id="renameDialog" class="modal" style="display:none">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h3>Adı Değiştir</h3>
+      </div>
+      <input type="text" id="renameInput" placeholder="Yeni ad..." autofocus>
+      <div class="dialog-actions">
+        <button id="renamCancel" class="btn-secondary">İptal</button>
+        <button id="renameOk" class="btn-primary">Değiştir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Dialog -->
+  <div id="deleteDialog" class="modal" style="display:none">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h3>Oturumu Sil</h3>
+      </div>
+      <p id="deleteMsg" style="color:var(--text);margin:16px 0">Bu işlem geri alınamaz.</p>
+      <div class="dialog-actions">
+        <button id="deleteCancel" class="btn-secondary">İptal</button>
+        <button id="deleteOk" class="btn-danger">Sil</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -251,8 +409,12 @@ const $ = s => document.querySelector(s);
 const stage = $("#stage"), left = $("#left"), wrap = $("#wrap"), sheet = $("#sheet");
 const cmd = $("#cmd"), send = $("#send"), log = $("#log"), hint = $("#hint");
 const undoBtn = $("#undo"), dresetBtn = $("#dreset");
-const upload = $("#upload"), uploadLabel = $("#uploadLabel"), oturum = $("#oturum");
+const upload = $("#upload"), uploadLabel = $("#uploadLabel");
+const sessionModal = $("#sessionModal"), sessionBtn = $("#sessionBtn");
+const sessionList = $("#sessionList"), sessionSearch = $("#sessionSearch"), sessionTable = $("#sessionTable");
+const sessionEmpty = $("#sessionEmpty"), closeSession = $("#closeSession");
 let aktifOturum = "";
+let oturumlar = [];
 
 /* ---------- zoom: transform yerine CSS zoom ---------- */
 let zmode = "fit";
@@ -380,9 +542,219 @@ async function loadState(){
 async function loadOturumlar(){
   const d = await (await fetch("/oturum")).json();
   aktifOturum = d.aktif || "";
-  oturum.innerHTML = "";
-  if (!d.oturumlar.length) oturum.add(new Option("Henüz CV yüklenmedi", ""));
-  for (const o of d.oturumlar) oturum.add(new Option((o.ad || o.id) + " · " + (o.kaynak || "CV"), o.id, false, o.id === aktifOturum));
+  oturumlar = d.oturumlar || [];
+  renderSessionList(oturumlar);
+}
+
+function renderSessionList(filtrelenmisList){
+  sessionList.innerHTML = "";
+  if (!filtrelenmisList.length) {
+    sessionEmpty.style.display = "block";
+    sessionTable.style.display = "none";
+    return;
+  }
+  sessionEmpty.style.display = "none";
+  sessionTable.style.display = "table";
+
+  for (const o of filtrelenmisList) {
+    const tr = document.createElement("tr");
+    if (o.id === aktifOturum) tr.classList.add("active");
+
+    const durumu = o.hazir ? (o.gecmis > 0 ? `${o.gecmis} adım` : "Yeni") : "İşleniyor";
+
+    tr.innerHTML = `
+      <td><span class="session-name" data-id="${o.id}">${o.ad || o.id}</span></td>
+      <td><span class="session-meta">${o.kaynak || "—"}</span></td>
+      <td><span class="session-meta">${o.bolum} bölüm</span></td>
+      <td><span class="session-meta">${durumu}</span></td>
+      <td class="session-actions">
+        <button class="session-btn rename" data-id="${o.id}" title="Adını değiştir">✎</button>
+        <button class="session-btn delete" data-id="${o.id}" title="Sil">🗑</button>
+      </td>
+    `;
+
+    // Session seç
+    tr.querySelector(".session-name").addEventListener("click", () => {
+      selectSession(o.id);
+    });
+
+    // Rename
+    tr.querySelector(".rename").addEventListener("click", (e) => {
+      e.stopPropagation();
+      renameSession(o.id, o.ad || o.id);
+    });
+
+    // Delete
+    tr.querySelector(".delete").addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteSession(o.id);
+    });
+
+    sessionList.appendChild(tr);
+  }
+}
+
+function filterSessions(){
+  const q = sessionSearch.value.toLowerCase();
+  const filtered = oturumlar.filter(o => (o.ad || o.id).toLowerCase().includes(q));
+  renderSessionList(filtered);
+}
+
+async function selectSession(id){
+  const r = await jpost("/oturum/sec", {id});
+  if (r.ok) {
+    aktifOturum = id;
+    await refreshSheet();
+    await loadState();
+    sessionModal.style.display = "none";
+    renderSessionList(oturumlar);
+  }
+}
+
+function showRenameDialog(id, currentName){
+  const renameDialog = $("#renameDialog");
+  const renameInput = $("#renameInput");
+  const renameOk = $("#renameOk");
+  const renameCancel = $("#renamCancel");
+
+  renameInput.value = currentName;
+  renameDialog.style.display = "flex";
+  renameInput.select();
+
+  const handleOk = async () => {
+    const yeni = renameInput.value.trim();
+    if (!yeni || yeni === currentName) {
+      renameDialog.style.display = "none";
+      return;
+    }
+    const r = await jpost("/oturum/ad", {id, ad: yeni});
+    renameDialog.style.display = "none";
+    if (r.ok) {
+      await loadOturumlar();
+      hint.textContent = "Oturum adı değiştirildi";
+    } else {
+      hint.textContent = "Ad değiştirme başarısız: " + (r.error || "Bilinmeyen hata");
+    }
+  };
+
+  const handleCancel = () => {
+    renameDialog.style.display = "none";
+  };
+
+  renameOk.onclick = handleOk;
+  renameCancel.onclick = handleCancel;
+  renameInput.onkeydown = (e) => {
+    if (e.key === "Enter") handleOk();
+    if (e.key === "Escape") handleCancel();
+  };
+}
+
+function showDeleteDialog(id){
+  const deleteDialog = $("#deleteDialog");
+  const deleteMsg = $("#deleteMsg");
+  const deleteOk = $("#deleteOk");
+  const deleteCancel = $("#deleteCancel");
+  const ad = oturumlar.find(o => o.id === id)?.ad || id;
+
+  deleteMsg.textContent = `"${ad}" oturumunu silmek istiyor musunuz? Bu işlem geri alınamaz.`;
+  deleteDialog.style.display = "flex";
+
+  const handleOk = async () => {
+    deleteDialog.style.display = "none";
+    const r = await jpost("/oturum/sil", {id});
+    if (r.ok) {
+      await loadOturumlar();
+      if (r.aktif) {
+        aktifOturum = r.aktif;
+        await refreshSheet();
+        await loadState();
+      }
+      hint.textContent = "Oturum silindi";
+    } else {
+      hint.textContent = "Silme başarısız: " + (r.error || "Bilinmeyen hata");
+    }
+  };
+
+  const handleCancel = () => {
+    deleteDialog.style.display = "none";
+  };
+
+  deleteOk.onclick = handleOk;
+  deleteCancel.onclick = handleCancel;
+}
+
+async function deleteSession(id){
+  const dialog = $("#deleteDialog");
+  const ad = oturumlar.find(o => o.id === id)?.ad || id;
+  $("#deleteMsg").textContent = `"${ad}" oturumunu silmek istiyor musunuz? Bu işlem geri alınamaz.`;
+  dialog.style.display = "flex";
+
+  return new Promise((resolve) => {
+    const deleteOk = async () => {
+      dialog.style.display = "none";
+      const r = await jpost("/oturum/sil", {id});
+      if (r.ok) {
+        await loadOturumlar();
+        if (r.aktif) {
+          aktifOturum = r.aktif;
+          await refreshSheet();
+          await loadState();
+        }
+        hint.textContent = "Oturum silindi";
+      } else {
+        hint.textContent = "Silme başarısız: " + (r.error || "Bilinmeyen hata");
+      }
+      resolve();
+    };
+
+    const deleteCancel = () => {
+      dialog.style.display = "none";
+      resolve();
+    };
+
+    $("#deleteOk").onclick = deleteOk;
+    $("#deleteCancel").onclick = deleteCancel;
+  });
+}
+
+async function renameSession(id, currentName){
+  const dialog = $("#renameDialog");
+  const input = $("#renameInput");
+  input.value = currentName;
+  dialog.style.display = "flex";
+  input.select();
+  input.focus();
+
+  return new Promise((resolve) => {
+    const submit = async () => {
+      const yeni = input.value.trim();
+      dialog.style.display = "none";
+      if (!yeni || yeni === currentName) {
+        resolve();
+        return;
+      }
+      const r = await jpost("/oturum/ad", {id, ad: yeni});
+      if (r.ok) {
+        await loadOturumlar();
+        hint.textContent = "Oturum adı değiştirildi";
+      } else {
+        hint.textContent = "Ad değiştirme başarısız: " + (r.error || "Bilinmeyen hata");
+      }
+      resolve();
+    };
+
+    const cancel = () => {
+      dialog.style.display = "none";
+      resolve();
+    };
+
+    $("#renameOk").onclick = submit;
+    $("#renamCancel").onclick = cancel;
+    input.onkeydown = (e) => {
+      if (e.key === "Enter") submit();
+      if (e.key === "Escape") cancel();
+    };
+  });
 }
 async function yukleDosya(file){
   if (!file) return;
@@ -509,7 +881,28 @@ uploadLabel.addEventListener("drop", e => {
     yukleDosya(file);
   }
 });
-oturum.addEventListener("change", async () => { if (!oturum.value) return; await jpost("/oturum/sec", {id:oturum.value}); aktifOturum = oturum.value; await refreshSheet(); await loadState(); });
+
+/* ---------- session modal yonetimi ---------- */
+sessionBtn.addEventListener("click", () => {
+  sessionModal.style.display = "flex";
+  sessionSearch.focus();
+});
+closeSession.addEventListener("click", () => {
+  sessionModal.style.display = "none";
+});
+sessionModal.addEventListener("click", (e) => {
+  if (e.target === sessionModal) sessionModal.style.display = "none";
+});
+sessionSearch.addEventListener("input", filterSessions);
+
+const renameDialog = $("#renameDialog");
+const deleteDialog = $("#deleteDialog");
+renameDialog.addEventListener("click", (e) => {
+  if (e.target === renameDialog) renameDialog.style.display = "none";
+});
+deleteDialog.addEventListener("click", (e) => {
+  if (e.target === deleteDialog) deleteDialog.style.display = "none";
+});
 
 /* ---------- sira: arka planda tek tek calisir ---------- */
 const queue = [];
