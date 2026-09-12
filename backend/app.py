@@ -85,6 +85,15 @@ class OturumAd(BaseModel):
     ad: str
 
 
+class OturumListeQuery(BaseModel):
+    """Query parameters for GET /oturum"""
+    page: int = 1
+    limit: int = 50
+    sort: str = "-guncelleme"  # -field for desc, +field for asc
+    status: str = ""  # hazir, yeni, islemeniyor, or empty for all
+    kaynak: str = ""  # filter by kaynak field
+
+
 def _hazirla(oid=""):
     """Her istekte oturumu yeniden bagla; reload sonrasi yol kaybolmaz."""
     try:
@@ -196,8 +205,52 @@ async def upload(dosya: UploadFile = File(...), ad: str = Form("")):
 
 
 @app.get("/oturum")
-def oturum_liste():
-    return {"ok": True, "aktif": session.aktif(), "oturumlar": session.liste()}
+def oturum_liste(page: int = 1, limit: int = 50, sort: str = "-guncelleme",
+                 status: str = "", kaynak: str = ""):
+    """List sessions with pagination, filtering, and sorting."""
+    oturumlar = session.liste()
+
+    # Filter by status
+    if status:
+        if status == "hazir":
+            oturumlar = [o for o in oturumlar if o.get("hazir")]
+        elif status == "yeni":
+            oturumlar = [o for o in oturumlar if o.get("gecmis", 0) == 0 and o.get("hazir")]
+        elif status == "islemeniyor":
+            oturumlar = [o for o in oturumlar if not o.get("hazir")]
+
+    # Filter by kaynak
+    if kaynak:
+        oturumlar = [o for o in oturumlar if kaynak.lower() in o.get("kaynak", "").lower()]
+
+    # Sort
+    reverse = sort.startswith("-")
+    sort_field = sort.lstrip("+-") or "guncelleme"
+    try:
+        oturumlar = sorted(oturumlar,
+                          key=lambda o: o.get(sort_field, 0) or 0,
+                          reverse=reverse)
+    except (KeyError, TypeError):
+        pass
+
+    # Pagination
+    start = (page - 1) * limit
+    end = start + limit
+    total = len(oturumlar)
+    paginated = oturumlar[start:end]
+
+    return {
+        "ok": True,
+        "aktif": session.aktif(),
+        "oturumlar": paginated,
+        "pagination": {
+            "page": page,
+            "limit": limit,
+            "total": total,
+            "pages": (total + limit - 1) // limit,
+            "hasNext": end < total
+        }
+    }
 
 
 @app.post("/oturum/sec")

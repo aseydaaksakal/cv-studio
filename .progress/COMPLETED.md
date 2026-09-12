@@ -259,3 +259,29 @@ All acceptance criteria met. Ready for Stage 6d-7h: Advanced Session Features.
 - Bug fix applied (HTTP method alignment: PUT → POST)
 
 **v0.2.0 Ready for Production** ✅
+
+---
+
+## v0.3.0 — Web Edition Sync + Performance (Stage 6d-7i)
+
+**Start Date:** 2026-09-12  
+**Planned Release:** 2026-09-22
+**Type:** Minor Release — Web/Desktop sync + performance  
+**Status:** IN PROGRESS 🚀
+
+### Phase 1: API Improvements (IN PROGRESS)
+- [x] Pagination support: `GET /oturum?page=1&limit=50`
+- [x] Filtering: `?status=hazir&kaynak=cv.pdf`
+- [x] Sorting: `?sort=ad,-guncelleme` (-, + for desc/asc)
+- [ ] Backend endpoint fully tested & deployed
+
+### Phase 2: Web Edition Enhancements (TODO)
+- [ ] Session manager modal to web/index.html
+- [ ] Checkbox selection
+- [ ] Batch operations (copy, rename, delete, export)
+- [ ] Sync session list updates
+
+### Phase 3: Performance Optimizations (TODO)
+- [ ] Client-side caching (5-min TTL)
+- [ ] Debounce search input
+- [ ] Lazy load session data
