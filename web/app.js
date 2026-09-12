@@ -350,7 +350,7 @@ $("#file").onchange = (e) => e.target.files[0] && readFile(e.target.files[0]).ca
 ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
 ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
 drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) readFile(f).catch((err) => status(err.message, true)); });
-$("#btn-sample").onclick = () => { setCV(structuredClone(SAMPLE), { record: false }); showWorkspace(); say("assistant", "This is a sample CV for a fictional person. Try: \"Add a project called ledger-viz\", or press a quick action."); };
+$("#btn-sample").onclick = () => { setCV(structuredClone(SAMPLE), { record: false }); showWorkspace(); };
 
 $("#composer").addEventListener("submit", (e) => { e.preventDefault(); const q = $("#ask").value.trim(); if (!q) return; $("#ask").value = ""; editWithAI(q); });
 $("#ask").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#composer").requestSubmit(); } });
