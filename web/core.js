@@ -305,3 +305,139 @@ export function download(name, content, type = "text/plain") {
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click(); URL.revokeObjectURL(a.href);
 }
 
+/* ───────────────────────── web edition session management ───────────────────────── */
+
+const SESSIONS_KEY = "cvstudio:sessions";
+const ACTIVE_SESSION_KEY = "cvstudio:active-session";
+const SELECTED_SESSIONS_KEY = "cvstudio:selected-sessions";
+
+export function generateSessionId() {
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+export function createSession(name = "New CV") {
+  const id = generateSessionId();
+  const session = {
+    id,
+    name,
+    cv: EMPTY(),
+    notes: "",
+    created: new Date().toISOString(),
+    modified: new Date().toISOString(),
+  };
+  const sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || "[]");
+  sessions.push(session);
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+  localStorage.setItem(ACTIVE_SESSION_KEY, id);
+  return session;
+}
+
+export function listSessions() {
+  return JSON.parse(localStorage.getItem(SESSIONS_KEY) || "[]");
+}
+
+export function getSession(id) {
+  const sessions = listSessions();
+  return sessions.find((s) => s.id === id);
+}
+
+export function updateSession(id, updates) {
+  const sessions = listSessions();
+  const session = sessions.find((s) => s.id === id);
+  if (!session) throw new Error(`Session ${id} not found`);
+  Object.assign(session, updates, { modified: new Date().toISOString() });
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+  return session;
+}
+
+export function deleteSession(id) {
+  const sessions = listSessions();
+  const idx = sessions.findIndex((s) => s.id === id);
+  if (idx < 0) throw new Error(`Session ${id} not found`);
+  sessions.splice(idx, 1);
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+  const active = localStorage.getItem(ACTIVE_SESSION_KEY);
+  if (active === id) {
+    if (sessions.length > 0) localStorage.setItem(ACTIVE_SESSION_KEY, sessions[0].id);
+    else localStorage.removeItem(ACTIVE_SESSION_KEY);
+  }
+  return true;
+}
+
+export function deleteSessionsBatch(ids) {
+  const sessions = listSessions();
+  const remaining = sessions.filter((s) => !ids.includes(s.id));
+  if (remaining.length === sessions.length) return false;
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(remaining));
+  const active = localStorage.getItem(ACTIVE_SESSION_KEY);
+  if (!remaining.find((s) => s.id === active)) {
+    if (remaining.length > 0) localStorage.setItem(ACTIVE_SESSION_KEY, remaining[0].id);
+    else localStorage.removeItem(ACTIVE_SESSION_KEY);
+  }
+  clearSelectedSessions();
+  return true;
+}
+
+export function copySession(id) {
+  const session = getSession(id);
+  if (!session) throw new Error(`Session ${id} not found`);
+  const newId = generateSessionId();
+  const copy = {
+    ...structuredClone(session),
+    id: newId,
+    name: `${session.name} (Copy)`,
+    created: new Date().toISOString(),
+    modified: new Date().toISOString(),
+  };
+  const sessions = listSessions();
+  sessions.push(copy);
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+  return copy;
+}
+
+export function renameSessionsBatch(renames) {
+  const sessions = listSessions();
+  for (const { id, name } of renames) {
+    const session = sessions.find((s) => s.id === id);
+    if (!session) throw new Error(`Session ${id} not found`);
+    session.name = name;
+    session.modified = new Date().toISOString();
+  }
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+  clearSelectedSessions();
+  return sessions;
+}
+
+export function setSessionNotes(id, notes) {
+  return updateSession(id, { notes: String(notes || "").slice(0, 1000) });
+}
+
+export function getActiveSession() {
+  const id = localStorage.getItem(ACTIVE_SESSION_KEY);
+  return id ? getSession(id) : null;
+}
+
+export function setActiveSession(id) {
+  if (!getSession(id)) throw new Error(`Session ${id} not found`);
+  localStorage.setItem(ACTIVE_SESSION_KEY, id);
+}
+
+export function getSelectedSessions() {
+  return JSON.parse(localStorage.getItem(SELECTED_SESSIONS_KEY) || "[]");
+}
+
+export function setSelectedSessions(ids) {
+  if (ids.length === 0) clearSelectedSessions();
+  else localStorage.setItem(SELECTED_SESSIONS_KEY, JSON.stringify(ids));
+}
+
+export function clearSelectedSessions() {
+  localStorage.removeItem(SELECTED_SESSIONS_KEY);
+}
+
+export function exportSessionsAsJSON(ids) {
+  const sessions = listSessions();
+  const toExport = sessions.filter((s) => ids.includes(s.id));
+  return JSON.stringify(toExport, null, 2);
+}
+

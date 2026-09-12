@@ -1,5 +1,5 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
-import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, applyOps, download, extractJSON, looksDestructive, normalize, plainText, renderATS, renderStyled, whisperLangName } from "./core.js";
+import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, applyOps, clearSelectedSessions, copySession, createSession, deleteSession, deleteSessionsBatch, download, extractJSON, exportSessionsAsJSON, getActiveSession, getSelectedSessions, getSession, looksDestructive, listSessions, normalize, plainText, renameSessionsBatch, renderATS, renderStyled, setActiveSession, setSelectedSessions, setSessionNotes, updateSession, whisperLangName } from "./core.js";
 import { LOCAL_MODELS, LOCAL_WHISPER, UnknownModelError, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localWhisperId, ollamaModels, pickForBudget, probeModel } from "./engines.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
@@ -14,7 +14,12 @@ const saveSettings = () => localStorage.setItem("cvstudio.settings", JSON.string
 const progress = (msg, pct) => status(pct ? `${msg} ${pct}%` : msg);
 
 function persist() {
-  localStorage.setItem("cvstudio.cv", JSON.stringify(state.cv));
+  const active = getActiveSession();
+  if (active) {
+    updateSession(active.id, { cv: state.cv });
+  } else {
+    localStorage.setItem("cvstudio.cv", JSON.stringify(state.cv));
+  }
   if (state.photo) localStorage.setItem("cvstudio.photo", state.photo); else localStorage.removeItem("cvstudio.photo");
 }
 function setCV(next, { record = true } = {}) {
@@ -406,10 +411,166 @@ $("#btn-save-settings").onclick = () => {
   saveSettings();
 };
 
+/* ───────────────────────── session management ───────────────────────── */
+
+async function showInputDialog(title, placeholder = "", defaultValue = "") {
+  const dlg = $("#input-dialog");
+  const titleEl = $("#input-title");
+  const inputEl = $("#input-value");
+  titleEl.textContent = title;
+  inputEl.placeholder = placeholder;
+  inputEl.value = defaultValue;
+  inputEl.focus();
+  const result = await dlg.showModal();
+  return inputEl.value;
+}
+
+function renderSessionsList() {
+  const container = $("#sessions-list");
+  const sessions = listSessions();
+  const selected = new Set(getSelectedSessions());
+  const activeId = getActiveSession()?.id;
+
+  if (sessions.length === 0) {
+    container.innerHTML = '<div class="session-item-empty">No CVs yet. Create one to get started.</div>';
+    return;
+  }
+
+  container.innerHTML = sessions.map((s) => `
+    <div class="session-item ${s.id === activeId ? 'active' : ''}">
+      <input type="checkbox" value="${esc(s.id)}" ${selected.has(s.id) ? 'checked' : ''}>
+      <div class="session-item-info">
+        <div class="session-item-name">${esc(s.name)}</div>
+        <div class="session-item-meta">${new Date(s.modified).toLocaleDateString()}</div>
+        ${s.notes ? `<div class="session-item-notes">${esc(s.notes)}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('input[type=checkbox]').forEach((cb) => {
+    cb.onchange = () => {
+      const ids = Array.from(container.querySelectorAll('input[type=checkbox]:checked')).map((el) => el.value);
+      setSelectedSessions(ids);
+      updateSessionsToolbar();
+    };
+  });
+}
+
+function updateSessionsToolbar() {
+  const selected = getSelectedSessions();
+  $("#btn-delete-sessions").disabled = selected.length === 0;
+  $("#btn-copy-session").disabled = selected.length !== 1;
+  $("#btn-rename-sessions").disabled = selected.length === 0;
+  $("#btn-export-sessions").disabled = selected.length === 0;
+}
+
+function showSessionsManager() {
+  renderSessionsList();
+  updateSessionsToolbar();
+  $("#sessions").showModal();
+}
+
+$("#btn-sessions").onclick = showSessionsManager;
+
+$("#btn-new-session").onclick = async () => {
+  const name = await showInputDialog("New CV", "CV name", "My CV");
+  if (!name || !name.trim()) return;
+  const session = createSession(name.trim());
+  renderSessionsList();
+  setActiveSession(session.id);
+  state.cv = EMPTY();
+  state.history = [];
+  persist();
+  renderForm(); renderPreview();
+  updateSessionsToolbar();
+};
+
+$("#btn-delete-sessions").onclick = async () => {
+  const selected = getSelectedSessions();
+  if (!confirm(`Delete ${selected.length} CV${selected.length !== 1 ? 's' : ''}?`)) return;
+  deleteSessionsBatch(selected);
+  if (listSessions().length > 0) {
+    const active = getActiveSession();
+    if (active) setActiveSession(active.id);
+    else setActiveSession(listSessions()[0].id);
+  } else {
+    clearSelectedSessions();
+  }
+  renderSessionsList();
+  updateSessionsToolbar();
+  loadActiveSession();
+};
+
+$("#btn-copy-session").onclick = async () => {
+  const selected = getSelectedSessions();
+  if (selected.length !== 1) return;
+  const copy = copySession(selected[0]);
+  renderSessionsList();
+  updateSessionsToolbar();
+};
+
+$("#btn-rename-sessions").onclick = async () => {
+  const selected = getSelectedSessions();
+  if (selected.length === 0) return;
+  const renames = [];
+  for (const id of selected) {
+    const session = getSession(id);
+    const newName = await showInputDialog(`Rename CV`, "New name", session.name);
+    if (newName && newName.trim()) renames.push({ id, name: newName.trim() });
+  }
+  if (renames.length === 0) return;
+  renameSessionsBatch(renames);
+  renderSessionsList();
+  updateSessionsToolbar();
+};
+
+$("#btn-export-sessions").onclick = async () => {
+  const selected = getSelectedSessions();
+  if (selected.length === 0) return;
+  const json = exportSessionsAsJSON(selected);
+  download(`cv-studio-export.json`, json, "application/json");
+};
+
+function loadActiveSession() {
+  let session = getActiveSession();
+  if (!session) {
+    const sessions = listSessions();
+    if (sessions.length === 0) {
+      state.cv = EMPTY();
+      state.history = [];
+      showLanding();
+      return;
+    }
+    session = sessions[0];
+    setActiveSession(session.id);
+  }
+  state.cv = normalize(session.cv);
+  state.history = [];
+  state.photo = null;
+  persist();
+  renderForm(); renderPreview();
+  showWorkspace();
+}
+
 /* boot */
 const saved = localStorage.getItem("cvstudio.cv");
-state.photo = localStorage.getItem("cvstudio.photo");
-if (state.photo) $("#photo-toggle").checked = true;
-state.cv = normalize(saved ? JSON.parse(saved) : EMPTY());
-renderForm(); renderPreview();
-if (saved && state.cv.basics.name) { showWorkspace(); say("assistant", `Welcome back, ${state.cv.basics.name.split(" ")[0]}. Your CV is restored from this browser.`); }
+const sessions = listSessions();
+
+if (sessions.length === 0 && saved) {
+  // Migrate old single-CV to new session system
+  const cv = JSON.parse(saved);
+  const session = createSession("My CV");
+  updateSession(session.id, { cv });
+  localStorage.removeItem("cvstudio.cv");
+  localStorage.removeItem("cvstudio.photo");
+}
+
+if (sessions.length > 0) {
+  loadActiveSession();
+} else {
+  state.photo = localStorage.getItem("cvstudio.photo");
+  if (state.photo) $("#photo-toggle").checked = true;
+  state.cv = normalize(saved ? JSON.parse(saved) : EMPTY());
+  renderForm(); renderPreview();
+  if (saved && state.cv.basics.name) { showWorkspace(); say("assistant", `Welcome back, ${state.cv.basics.name.split(" ")[0]}. Your CV is restored from this browser.`); }
+}

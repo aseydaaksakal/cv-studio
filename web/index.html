@@ -33,6 +33,7 @@
   <section class="stage">
     <div class="toolbar">
       <div class="brand">CV Studio</div>
+      <button id="btn-sessions" class="ghost small" title="Manage CVs">📚 My CVs</button>
       <button id="btn-upload" class="ghost small">Upload CV</button>
       <label>Template
         <select id="template">
@@ -88,6 +89,37 @@
     <section id="tab-fields" class="tab-panel"><div id="form"></div></section>
   </aside>
 </main>
+
+<!-- ───────── session manager ───────── -->
+<dialog id="sessions">
+  <form method="dialog" class="dlg sessions-dlg">
+    <h2>Your CVs</h2>
+    <p class="muted">Manage your CV projects. All stored in this browser.</p>
+    <div class="sessions-toolbar">
+      <button type="button" id="btn-new-session" class="primary small">➕ New CV</button>
+      <button type="button" id="btn-delete-sessions" class="ghost small" disabled>🗑 Delete</button>
+      <button type="button" id="btn-copy-session" class="ghost small" disabled>📋 Copy</button>
+      <button type="button" id="btn-rename-sessions" class="ghost small" disabled>✏️ Rename</button>
+      <button type="button" id="btn-export-sessions" class="ghost small" disabled>📦 Export</button>
+    </div>
+    <div class="sessions-list" id="sessions-list"></div>
+    <div class="row end">
+      <button value="cancel" class="ghost">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ───────── session name input ───────── -->
+<dialog id="input-dialog">
+  <form method="dialog" class="dlg">
+    <h2 id="input-title">Enter name</h2>
+    <input type="text" id="input-value" placeholder="">
+    <div class="row end">
+      <button value="cancel" class="ghost">Cancel</button>
+      <button value="ok" class="primary">OK</button>
+    </div>
+  </form>
+</dialog>
 
 <!-- ───────── settings ───────── -->
 <dialog id="settings">
