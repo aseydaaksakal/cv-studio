@@ -155,12 +155,20 @@ export async function localTranscriber(model, onProgress = () => {}) {
     /* Ask for the adapter before choosing, so a machine without one downloads the CPU build only.
        The backend can still fail after that, so the CPU build stays a fallback as well as an else branch. */
     const gpu = await webgpuUsable();
+    const oldLog = console.log, oldWarn = console.warn, oldInfo = console.info;
+    console.log = console.warn = console.info = () => {};
     try {
-      transcriber = await pipeline("automatic-speech-recognition", model, gpu ? onGPU : onCPU);
-    } catch (e) {
-      if (!gpu) throw e;
-      onProgress("No usable GPU — loading Whisper for the processor instead…", 0);
-      transcriber = await pipeline("automatic-speech-recognition", model, onCPU);
+      try {
+        transcriber = await pipeline("automatic-speech-recognition", model, gpu ? onGPU : onCPU);
+      } catch (e) {
+        if (!gpu) throw e;
+        onProgress("No usable GPU — loading Whisper for the processor instead…", 0);
+        transcriber = await pipeline("automatic-speech-recognition", model, onCPU);
+      }
+    } finally {
+      console.log = oldLog;
+      console.warn = oldWarn;
+      console.info = oldInfo;
     }
     transcriberModel = model;
   })();
