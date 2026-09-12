@@ -116,17 +116,26 @@ These rules apply to ALL Claude Code sessions on this project (desktop, cloud, r
 **Workflow:**
 1. ✅ Complete feature implementation (code, test, commit, push)
 2. ✅ Verify on live site
-3. ✅ Open new Claude Code tab/session
-4. ✅ New session continues from where the previous one left off
-5. ✅ No handoff delays or manual context transfer needed
+3. ✅ **STOP THIS SESSION** — do NOT continue in same tab
+4. ✅ Click "New" button (top-left) to open new Claude Code session
+5. ✅ New session picks up from message screen (continues previous context)
+6. ✅ New session automatically picks up next feature from .progress/ROADMAP.md
 
 **Implementation:**
-- When feature is done → send final report
-- User clicks "New Tab" or continuation link
-- New Claude Code session starts with full context
-- Automatically picks up the next feature from .progress/ROADMAP.md
+- After each feature: commit → push → **STOP**
+- Click "New" button to start fresh session
+- Paste this into new session's message: "continue Feature #X from where we left off"
+- New session has full conversation history
+- Prevents context bloat (fresh session = clean memory)
+- Maintains momentum (no wait, no context loss)
 
-**Why:** Keeps sessions focused, prevents context bloat, maintains momentum on multi-feature sprints.
+**Why:** 
+- Keeps sessions focused (each feature = one session)
+- Prevents token bloat (context window stays manageable)
+- Maintains velocity (no multi-turn negotiations)
+- Clean history (new sessions start fresh)
+
+**Automate:** Every feature end → New tab → Same conversation → Continue
 
 ---
 
