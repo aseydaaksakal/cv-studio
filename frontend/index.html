@@ -1376,6 +1376,11 @@ upload.addEventListener("change", () => {
   if (upload.files[0]) yukleDosya(upload.files[0]);
 });
 
+uploadLabel.addEventListener("click", () => {
+  // Reset file input so same file can be selected again
+  upload.value = "";
+});
+
 uploadLabel.addEventListener("dragover", e => {
   e.preventDefault();
   uploadLabel.classList.add("drag");
@@ -1390,7 +1395,10 @@ uploadLabel.addEventListener("drop", e => {
   uploadLabel.classList.remove("drag");
   const file = e.dataTransfer.files[0];
   if (file) {
-    upload.files = e.dataTransfer.files; // Update input
+    // Create new DataTransfer to set files (files property is read-only)
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    upload.files = dt.files;
     yukleDosya(file);
   }
 });
