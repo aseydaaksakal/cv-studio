@@ -250,7 +250,8 @@ async function startRecording(transcribe) {
     try {
       const { text, language } = await transcribe(new Blob(chunks, { type: recorder.mimeType }));
       if (text.trim()) {
-        showTranscriptionModal(text);
+        $("#ask").value = text;
+        micStatus("");
       } else {
         micStatus("No speech detected. Try again.");
       }
@@ -272,20 +273,6 @@ async function transcribeLocally(blob) {
     throw e;
   }
 }
-
-function showTranscriptionModal(text) {
-  $("#transcription-text").textContent = text;
-  const modal = $("#transcription-modal");
-  modal.showModal();
-  micStatus("");
-}
-
-$("#btn-accept-transcription").onclick = () => {
-  const text = $("#transcription-text").textContent;
-  $("#transcription-modal").close();
-  $("#ask").value = text;
-  $("#composer").dispatchEvent(new Event("submit"));
-};
 
 async function transcribeWithDesktop(blob) {
   const base = (settings.desktopurl || "http://localhost:8000").replace(/\/$/, "");
