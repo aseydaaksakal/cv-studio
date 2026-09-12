@@ -194,3 +194,16 @@ select.mini { width:auto; margin:0; padding:.35rem .5rem; font-size:.8rem; max-w
   .sessions-search select { order: 2; flex-basis: 100%; }
   .sessions-search-count { order: 3; width: 100%; text-align: left; margin-top: .3rem; }
 }
+
+/* transcription modal */
+dialog.dlg-transcription { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); border: none; border-radius: var(--radius); background: var(--panel); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,0.3); padding: 0; width: 90%; max-width: 500px; }
+dialog.dlg-transcription::backdrop { background: rgba(0,0,0,0.5); }
+.transcription-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid var(--line); }
+.transcription-title { font-weight: 600; font-size: 1rem; }
+.transcription-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted); padding: 0; width: 1.5rem; height: 1.5rem; display: flex; align-items: center; justify-content: center; }
+.transcription-close:hover { color: var(--text); }
+.transcription-content { padding: 1.5rem; font-size: 0.95rem; line-height: 1.6; color: var(--text); min-height: 60px; max-height: 60vh; overflow-y: auto; word-wrap: break-word; white-space: pre-wrap; }
+.transcription-actions { display: flex; gap: 0.8rem; justify-content: flex-end; padding: 1rem; border-top: 1px solid var(--line); }
+.transcription-actions button { margin: 0; }
+#btn-accept-transcription { background: var(--accent); border-color: var(--accent); color: #fff; }
+#btn-accept-transcription:hover { background: var(--accent-2); }
