@@ -233,6 +233,17 @@ async def upload(dosya: UploadFile = File(...), ad: str = Form("")):
         "projects": []
     }
 
+    # Stub preview HTML oluştur (boş ama /preview 404 vermeyecek)
+    try:
+        render_cv.HTML_OUT.parent.mkdir(parents=True, exist_ok=True)
+        render_cv.HTML_OUT.write_text(
+            "<html><body><p>Yükleniyor...</p></body></html>",
+            encoding="utf-8"
+        )
+        print(f"[UPLOAD] Stub preview oluşturuldu", file=sys.stderr, flush=True)
+    except Exception as e:
+        print(f"[UPLOAD] Stub preview hatası: {e}", file=sys.stderr, flush=True)
+
     # Hemen temel yapıyı döndür
     yanit = {
         "ok": True,
