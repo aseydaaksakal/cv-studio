@@ -441,3 +441,41 @@ export function exportSessionsAsJSON(ids) {
   return JSON.stringify(toExport, null, 2);
 }
 
+/* ───────────────────────── dark mode theme management ───────────────────────── */
+
+const THEME_KEY = "cvstudio:theme";
+
+export function getTheme() {
+  const stored = localStorage.getItem(THEME_KEY);
+  if (stored) return stored; // "light", "dark", or "system"
+  return "system";
+}
+
+export function setTheme(theme) {
+  if (!["light", "dark", "system"].includes(theme)) {
+    throw new Error("Invalid theme: must be 'light', 'dark', or 'system'");
+  }
+  localStorage.setItem(THEME_KEY, theme);
+  applyTheme(theme);
+}
+
+export function applyTheme(theme) {
+  const root = document.documentElement;
+
+  if (theme === "system") {
+    root.removeAttribute("data-theme");
+  } else {
+    root.setAttribute("data-theme", theme);
+  }
+}
+
+export function getSystemTheme() {
+  if (typeof window === "undefined" || !window.matchMedia) return "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+export function getEffectiveTheme() {
+  const theme = getTheme();
+  return theme === "system" ? getSystemTheme() : theme;
+}
+

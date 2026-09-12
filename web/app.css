@@ -3,8 +3,12 @@
   --accent: #3b82f6; --accent-2: #2563eb; --danger: #ef4444; --radius: 10px;
 }
 @media (prefers-color-scheme: light) {
-  :root { --bg: #f4f5f8; --panel: #fff; --line: #e3e6ec; --text: #14171d; --muted: #667085; }
+  :root:not([data-theme="dark"]) { --bg: #f4f5f8; --panel: #fff; --line: #e3e6ec; --text: #14171d; --muted: #667085; }
 }
+/* explicit light mode */
+:root[data-theme="light"] { --bg: #f4f5f8; --panel: #fff; --line: #e3e6ec; --text: #14171d; --muted: #667085; }
+/* explicit dark mode */
+:root[data-theme="dark"] { --bg: #0f1115; --panel: #171a21; --line: #262b36; --text: #e6e8ee; --muted: #8b93a5; }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }

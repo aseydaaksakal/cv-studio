@@ -1,5 +1,5 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
-import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, applyOps, clearSelectedSessions, copySession, createSession, deleteSession, deleteSessionsBatch, download, extractJSON, exportSessionsAsJSON, getActiveSession, getSelectedSessions, getSession, looksDestructive, listSessions, normalize, plainText, renameSessionsBatch, renderATS, renderStyled, setActiveSession, setSelectedSessions, setSessionNotes, updateSession, whisperLangName } from "./core.js";
+import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, applyOps, applyTheme, clearSelectedSessions, copySession, createSession, deleteSession, deleteSessionsBatch, download, extractJSON, exportSessionsAsJSON, getActiveSession, getEffectiveTheme, getSelectedSessions, getSession, getSystemTheme, getTheme, looksDestructive, listSessions, normalize, plainText, renameSessionsBatch, renderATS, renderStyled, setActiveSession, setSelectedSessions, setSessionNotes, setTheme, updateSession, whisperLangName } from "./core.js";
 import { LOCAL_MODELS, LOCAL_WHISPER, UnknownModelError, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localWhisperId, ollamaModels, pickForBudget, probeModel } from "./engines.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
@@ -411,6 +411,26 @@ $("#btn-save-settings").onclick = () => {
   saveSettings();
 };
 
+/* ───────────────────────── dark mode theme toggle ───────────────────────── */
+
+$("#btn-theme").onclick = () => {
+  const current = getTheme();
+  const next = current === "light" ? "dark" : current === "dark" ? "system" : "light";
+  setTheme(next);
+  updateThemeButton();
+};
+
+function updateThemeButton() {
+  const btn = $("#btn-theme");
+  const effective = getEffectiveTheme();
+  btn.textContent = effective === "dark" ? "☀️" : "🌙";
+}
+
+function initTheme() {
+  applyTheme(getTheme());
+  updateThemeButton();
+}
+
 /* ───────────────────────── session management ───────────────────────── */
 
 async function showInputDialog(title, placeholder = "", defaultValue = "") {
@@ -564,6 +584,8 @@ if (sessions.length === 0 && saved) {
   localStorage.removeItem("cvstudio.cv");
   localStorage.removeItem("cvstudio.photo");
 }
+
+initTheme();
 
 if (sessions.length > 0) {
   loadActiveSession();
