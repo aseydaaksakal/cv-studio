@@ -165,7 +165,7 @@ def preview(id: str = ""):
         return HTMLResponse(
             f"""<html>
             <head><style>body {{ margin: 0; padding: 0; background: #fff; }} img {{ max-width: 100%; height: auto; display: block; }}</style></head>
-            <body><img src="/preview_image?id={id}" alt="CV Preview"></body>
+            <body><img src="http://localhost:8000/preview_image?id={id}" alt="CV Preview" onload="console.log('Image loaded')" onerror="console.log('Image failed')"></body>
             </html>""",
             status_code=200, headers=NO_CACHE)
 
