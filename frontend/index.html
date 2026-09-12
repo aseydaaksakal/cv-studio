@@ -53,8 +53,13 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .sep{width:1px;height:22px;background:var(--edge-soft)}
 #oturum{max-width:210px;color:var(--text);background:var(--panel);border:1px solid var(--edge);border-radius:6px;padding:5px 8px}
 #upload{display:none}
-.upload{padding:5px 10px;border:1px dashed var(--edge);border-radius:6px;color:var(--dim);font-size:13px;cursor:pointer}
+.upload{padding:5px 10px;border:1px dashed var(--edge);border-radius:6px;color:var(--dim);font-size:13px;cursor:pointer;position:relative;overflow:hidden}
 .upload:hover,.upload.drag{color:var(--text);border-color:var(--accent);background:#202a33}
+
+/* upload progress */
+.upload-progress{position:absolute;left:0;top:0;height:100%;background:var(--accent);opacity:.15;width:0;transition:width .2s}
+.upload-status{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);font-size:12px;pointer-events:none}
+.upload-error{color:#e0605a;font-size:12px;margin-top:4px}
 
 main{display:grid;grid-template-columns:1fr 360px;min-height:0}
 #left{overflow:auto;display:flex;flex-direction:column;min-width:0}
@@ -167,8 +172,13 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
 
   <header id="bar">
     <div class="brand">CV Studio</div>
-    <label class="upload" id="uploadLabel" for="upload">PDF/DOCX yükle</label>
+    <label class="upload" id="uploadLabel" for="upload">
+      PDF/DOCX yükle
+      <div class="upload-progress" id="uploadProgress"></div>
+      <div class="upload-status" id="uploadStatus"></div>
+    </label>
     <input id="upload" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+    <div class="upload-error" id="uploadError"></div>
     <select id="oturum" title="CV oturumu"><option>Oturumlar yükleniyor</option></select>
     <div id="who">yükleniyor</div>
     <div class="grow"></div>
@@ -376,20 +386,129 @@ async function loadOturumlar(){
 }
 async function yukleDosya(file){
   if (!file) return;
-  const data = new FormData(); data.append("dosya", file, file.name);
-  uploadLabel.textContent = "Yükleniyor…"; upload.disabled = true;
-  try{
-    const r = await (await fetch("/upload", {method:"POST", body:data})).json();
-    if (!r.ok) throw new Error(r.error || "Yükleme tamamlanamadı");
-    aktifOturum = r.id; await loadOturumlar(); await refreshSheet(); await loadState();
-    hint.textContent = file.name + " işlendi: " + r.bolum + " bölüm, kapsam %" + Math.round(r.kapsama * 100);
-  }catch(e){ hint.textContent = "Yükleme hatası: " + e.message; }
-  finally{ upload.value = ""; upload.disabled = false; uploadLabel.textContent = "PDF/DOCX yükle"; }
+
+  // Dosya doğrulama
+  const uz = file.name.split(".").pop()?.toLowerCase() || "";
+  const kabul = ["pdf", "docx"];
+  if (!kabul.includes(uz)) {
+    $("#uploadError").textContent = "Desteklenmeyen format. PDF veya DOCX dosyası seçin.";
+    return;
+  }
+  const maxMB = 50; // backend'de yapılan kontrol ile uyumlu
+  if (file.size > maxMB * 1024 * 1024) {
+    $("#uploadError").textContent = `Dosya ${maxMB}MB'tan büyük. Seçileniz: ${(file.size / 1024 / 1024).toFixed(1)}MB`;
+    return;
+  }
+
+  // UI hazırla
+  $("#uploadError").textContent = "";
+  const progress = $("#uploadProgress");
+  const status = $("#uploadStatus");
+  upload.disabled = true;
+
+  const formData = new FormData();
+  formData.append("dosya", file, file.name);
+
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+
+    // Upload progress tracking
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        progress.style.width = pct + "%";
+        status.textContent = pct + "%";
+      }
+    });
+
+    xhr.addEventListener("load", async () => {
+      try {
+        const r = JSON.parse(xhr.responseText);
+        if (!r.ok) {
+          $("#uploadError").textContent = "Yükleme hatası: " + (r.error || "Bilinmeyen hata");
+          uploadLabel.textContent = "PDF/DOCX yükle";
+          progress.style.width = "0";
+          status.textContent = "";
+          upload.value = "";
+          upload.disabled = false;
+          resolve();
+          return;
+        }
+
+        // Başarılı: oturuma geç
+        progress.style.width = "100%";
+        status.textContent = "✓";
+        await new Promise(r => setTimeout(r, 300));
+
+        aktifOturum = r.id;
+        await loadOturumlar();
+        await refreshSheet();
+        await loadState();
+        hint.textContent = file.name + " işlendi: " + r.bolum + " bölüm, kapsam %" + Math.round(r.kapsama * 100);
+
+        // Sıfırla
+        progress.style.width = "0";
+        status.textContent = "";
+        uploadLabel.textContent = "PDF/DOCX yükle";
+        upload.value = "";
+      } catch (e) {
+        $("#uploadError").textContent = "Sunucu cevabı okunamadı: " + e.message;
+        uploadLabel.textContent = "PDF/DOCX yükle";
+        progress.style.width = "0";
+        status.textContent = "";
+        upload.value = "";
+      } finally {
+        upload.disabled = false;
+        resolve();
+      }
+    });
+
+    xhr.addEventListener("error", () => {
+      $("#uploadError").textContent = "Bağlantı hatası. Lütfen tekrar deneyiniz.";
+      uploadLabel.textContent = "PDF/DOCX yükle";
+      progress.style.width = "0";
+      status.textContent = "";
+      upload.value = "";
+      upload.disabled = false;
+      resolve();
+    });
+
+    xhr.addEventListener("abort", () => {
+      $("#uploadError").textContent = "Yükleme iptal edildi.";
+      uploadLabel.textContent = "PDF/DOCX yükle";
+      progress.style.width = "0";
+      status.textContent = "";
+      upload.value = "";
+      upload.disabled = false;
+      resolve();
+    });
+
+    xhr.open("POST", "/upload");
+    xhr.send(formData);
+  });
 }
-upload.addEventListener("change", () => yukleDosya(upload.files[0]));
-uploadLabel.addEventListener("dragover", e => { e.preventDefault(); uploadLabel.classList.add("drag"); });
-uploadLabel.addEventListener("dragleave", () => uploadLabel.classList.remove("drag"));
-uploadLabel.addEventListener("drop", e => { e.preventDefault(); uploadLabel.classList.remove("drag"); yukleDosya(e.dataTransfer.files[0]); });
+upload.addEventListener("change", () => {
+  if (upload.files[0]) yukleDosya(upload.files[0]);
+});
+
+uploadLabel.addEventListener("dragover", e => {
+  e.preventDefault();
+  uploadLabel.classList.add("drag");
+});
+
+uploadLabel.addEventListener("dragleave", () => {
+  uploadLabel.classList.remove("drag");
+});
+
+uploadLabel.addEventListener("drop", e => {
+  e.preventDefault();
+  uploadLabel.classList.remove("drag");
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    upload.files = e.dataTransfer.files; // Update input
+    yukleDosya(file);
+  }
+});
 oturum.addEventListener("change", async () => { if (!oturum.value) return; await jpost("/oturum/sec", {id:oturum.value}); aktifOturum = oturum.value; await refreshSheet(); await loadState(); });
 
 /* ---------- sira: arka planda tek tek calisir ---------- */
