@@ -170,3 +170,8 @@ Web edition: no analytics, no server, no storage beyond your own browser. The re
 ## License
 
 MIT
+
+
+## Deployment Status
+✅ GitHub Actions workflow triggered automatically on push.
+Vercel, Railway, Render, GitHub Pages deployments in progress...
