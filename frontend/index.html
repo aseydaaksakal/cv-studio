@@ -1280,9 +1280,15 @@ async function yukleDosya(file){
   }
 
   // UI hazırla
-  $("#uploadError").textContent = "";
+  const errorEl = $("#uploadError");
+  if (errorEl) errorEl.textContent = "";
   const progress = $("#uploadProgress");
   const status = $("#uploadStatus");
+
+  // Eğer progress element yoksa, sahte bir obje oluştur
+  const progressSafe = progress || { style: {} };
+  const statusSafe = status || {};
+
   upload.disabled = true;
 
   const formData = new FormData();
@@ -1295,8 +1301,8 @@ async function yukleDosya(file){
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable) {
         const pct = Math.round((e.loaded / e.total) * 100);
-        progress.style.width = pct + "%";
-        status.textContent = pct + "%";
+        if (progressSafe.style) progressSafe.style.width = pct + "%";
+        if (statusSafe) statusSafe.textContent = pct + "%";
       }
     });
 
@@ -1306,8 +1312,8 @@ async function yukleDosya(file){
         if (!r.ok) {
           $("#uploadError").textContent = "Yükleme hatası: " + (r.error || "Bilinmeyen hata");
           uploadLabel.textContent = "PDF/DOCX yükle";
-          progress.style.width = "0";
-          status.textContent = "";
+          if (progressSafe.style) progressSafe.style.width = "0";
+          if (statusSafe) statusSafe.textContent = "";
           upload.value = "";
           upload.disabled = false;
           resolve();
@@ -1315,8 +1321,8 @@ async function yukleDosya(file){
         }
 
         // Başarılı: oturuma geç
-        progress.style.width = "100%";
-        status.textContent = "✓";
+        if (progressSafe.style) progressSafe.style.width = "100%";
+        if (statusSafe) statusSafe.textContent = "✓";
         await new Promise(r => setTimeout(r, 300));
 
         aktifOturum = r.id;
@@ -1326,15 +1332,15 @@ async function yukleDosya(file){
         hint.textContent = file.name + " işlendi: " + r.bolum + " bölüm, kapsam %" + Math.round(r.kapsama * 100);
 
         // Sıfırla
-        progress.style.width = "0";
-        status.textContent = "";
+        if (progressSafe.style) progressSafe.style.width = "0";
+        if (statusSafe) statusSafe.textContent = "";
         uploadLabel.textContent = "PDF/DOCX yükle";
         upload.value = "";
       } catch (e) {
         $("#uploadError").textContent = "Sunucu cevabı okunamadı: " + e.message;
         uploadLabel.textContent = "PDF/DOCX yükle";
-        progress.style.width = "0";
-        status.textContent = "";
+        if (progressSafe.style) progressSafe.style.width = "0";
+        if (statusSafe) statusSafe.textContent = "";
         upload.value = "";
       } finally {
         upload.disabled = false;
@@ -1345,8 +1351,8 @@ async function yukleDosya(file){
     xhr.addEventListener("error", () => {
       $("#uploadError").textContent = "Bağlantı hatası. Lütfen tekrar deneyiniz.";
       uploadLabel.textContent = "PDF/DOCX yükle";
-      progress.style.width = "0";
-      status.textContent = "";
+      if (progressSafe.style) progressSafe.style.width = "0";
+      if (statusSafe) statusSafe.textContent = "";
       upload.value = "";
       upload.disabled = false;
       resolve();
@@ -1355,8 +1361,8 @@ async function yukleDosya(file){
     xhr.addEventListener("abort", () => {
       $("#uploadError").textContent = "Yükleme iptal edildi.";
       uploadLabel.textContent = "PDF/DOCX yükle";
-      progress.style.width = "0";
-      status.textContent = "";
+      if (progressSafe.style) progressSafe.style.width = "0";
+      if (statusSafe) statusSafe.textContent = "";
       upload.value = "";
       upload.disabled = false;
       resolve();
