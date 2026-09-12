@@ -31,13 +31,11 @@ export async function availableLocalModels() {
         const id = m.model_id;
         const mb = m.vram_required_MB || 0;
         const gb = mb / 1024;
-        // Only include models that reliably work in browsers and follow instructions
-        if (!/instruct|chat|it-/i.test(id) || /embedding|70B|13B|1.5B|9b|gemma/i.test(id)) return false;
-        if (gb > 5.8) return false; // Hard limit: models >5.8GB fail in most browsers
-        // Exclude high VRAM variants of borderline models
-        if ((id.includes("8B") || id.includes("7B")) && gb > 5.5) return false;
-        // Keep proven safe models: 3B (2-2.9GB) and small 7B (up to 5.0GB)
-        return true;
+        // Keep ONLY the proven best models for CV editing: Qwen2.5-7B, Qwen2.5-3B, Llama-3.2-3B
+        if (id.includes("Qwen2.5-7B-Instruct-q4f16_1")) return gb <= 5.0; // 5.0GB variant only
+        if (id.includes("Qwen2.5-3B-Instruct-q4f16_1")) return gb <= 2.4; // 2.4GB variant only
+        if (id.includes("Llama-3.2-3B-Instruct-q4f16_1")) return gb <= 2.2; // 2.2GB variant only
+        return false; // Exclude everything else
       })
       .map((m) => ({ id: m.model_id, mb: m.vram_required_MB || 0 }))
       .sort((a, b) => a.mb - b.mb);
