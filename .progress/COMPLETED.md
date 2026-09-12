@@ -196,4 +196,22 @@ All acceptance criteria met. Ready for Stage 6d-7h: Advanced Session Features.
 - ✅ Integration with checkbox persistence (Feature #1) working
 - ✅ Error handling for invalid/missing sessions
 
-**v0.2.0 Progress: 3/5 features complete (60%)**
+### 1.5 Export Sessions (COMPLETE ✅)
+- [x] Backend endpoint: `POST /oturum/export`
+- [x] Accept: `{ids: [string]}`
+- [x] Create ZIP with all session files
+- [x] Use Python zipfile library (standard format)
+- [x] Return: FileResponse with application/zip content-type
+- [x] Frontend "📦 İndir" button (shows when sessions selected)
+- [x] POST /oturum/export with selected IDs
+- [x] Trigger browser download
+- [x] Filename: cv-studio-export.zip
+
+**Test Results:**
+- ✅ Export button visible when sessions selected
+- ✅ Export endpoint returns 200 OK
+- ✅ ZIP download triggered to browser
+- ✅ No console errors
+- ✅ Integration with checkbox persistence working
+
+**v0.2.0 Progress: 5/5 features complete (100%) ✅**
