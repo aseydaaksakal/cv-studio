@@ -31,14 +31,12 @@ export async function availableLocalModels() {
         const id = m.model_id;
         const mb = m.vram_required_MB || 0;
         const gb = mb / 1024;
-        // Keep only models that actually work in browsers: <5.5GB, exclude unreliable ones
-        if (!/instruct|chat|it-/i.test(id) || /embedding/i.test(id)) return false;
-        if (id.includes("1.5B") || id.includes("70B") || id.includes("13B")) return false;
-        if (id.includes("Llama-3.1-8B") || id.includes("Llama-3-8B") && gb > 5.0) return false;
-        if (id.includes("Phi-3") && gb > 5.4) return false;
-        if (id.includes("gemma-2-9b") || id.includes("Llama-2-7b") && gb > 5.5) return false;
-        if (id.includes("Mistral") && gb > 5.0) return false;
-        if (gb > 5.8) return false;
+        // Only include models that reliably work in browsers and follow instructions
+        if (!/instruct|chat|it-/i.test(id) || /embedding|70B|13B|1.5B|9b|gemma/i.test(id)) return false;
+        if (gb > 5.8) return false; // Hard limit: models >5.8GB fail in most browsers
+        // Exclude high VRAM variants of borderline models
+        if ((id.includes("8B") || id.includes("7B")) && gb > 5.5) return false;
+        // Keep proven safe models: 3B (2-2.9GB) and small 7B (up to 5.0GB)
         return true;
       })
       .map((m) => ({ id: m.model_id, mb: m.vram_required_MB || 0 }))
