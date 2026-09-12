@@ -609,6 +609,22 @@ function showSessionsManager() {
   const searchInput = $("#sessions-search-input");
   const sortSelect = $("#sessions-sort");
 
+  // Update stats
+  const stats = (() => {
+    const all = listSessions();
+    return {
+      total: all.length,
+      archived: all.filter(s => s.archived).length,
+      withNotes: all.filter(s => s.notes).length,
+    };
+  })();
+  const statsEl = $("#sessions-stats");
+  if (statsEl) {
+    statsEl.textContent = stats.total === 0
+      ? "Create your first CV to get started."
+      : `${stats.total} CV${stats.total !== 1 ? 's' : ''} (${stats.archived} archived, ${stats.withNotes} with notes)`;
+  }
+
   searchInput.value = "";  // Clear search
 
   // Restore sort preference
