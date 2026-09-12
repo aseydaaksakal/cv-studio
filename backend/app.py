@@ -266,10 +266,22 @@ async def upload(dosya: UploadFile = File(...), ad: str = Form("")):
 
             # HTML preview'ı render et
             try:
-                render_cv.render()
-                print(f"[UPLOAD] HTML render edildi", file=sys.stderr)
+                import traceback
+                print(f"[UPLOAD] Render çağrılıyor...", file=sys.stderr)
+                result = render_cv.render()
+                print(f"[UPLOAD] HTML render edildi: {result}", file=sys.stderr)
+
+                # Dosya varsa kontrol et
+                if render_cv.HTML_OUT.exists():
+                    size = render_cv.HTML_OUT.stat().st_size
+                    print(f"[UPLOAD] Preview dosyası oluşturuldu: {size} bytes", file=sys.stderr)
+                else:
+                    print(f"[UPLOAD] UYARI: Preview dosyası oluşturulmadı: {render_cv.HTML_OUT}", file=sys.stderr)
+
             except Exception as e:
+                import traceback
                 print(f"[UPLOAD] Render hatası: {e}", file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
 
         except Exception as e:
             print(f"[UPLOAD] Arka plan hatası: {e}", file=sys.stderr)
