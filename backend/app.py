@@ -221,15 +221,12 @@ async def upload(dosya: UploadFile = File(...), ad: str = Form("")):
         print(f"[UPLOAD] Stub preview oluşturuldu", file=sys.stderr, flush=True)
 
         # 3. Hemen temel yapıyı döndür
+        print(f"[UPLOAD] Session {yeni_id} oluşturuldu, yanıt hazırlanıyor...", file=sys.stderr, flush=True)
         yanit = {
             "ok": True,
-            "id": yeni_id,
-            "bolum": 0,
-            "kapsama": 0.0,
-            "dosya": ad_dosya,
-            "durum": "yükleniyor...",
-            "islemeniyor": True
+            "id": yeni_id
         }
+        print(f"[UPLOAD] Yanıt dict oluşturuldu", file=sys.stderr, flush=True)
 
         # 4. Arka planda işlemeyi başlat
         def arka_plan_isle():
