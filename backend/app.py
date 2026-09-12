@@ -246,19 +246,23 @@ async def upload(dosya: UploadFile = File(...), ad: str = Form("")):
 
     # 4. Arka planda işlemeyi başlat (blocking yapmadan)
     import threading
+    import sys
     def arka_plan_isle():
         try:
+            print(f"[UPLOAD] Arka plan: PDF işleniyor: {hedef}", file=sys.stderr)
             result = pipeline.calistir(hedef, ad=ad.strip(), kopyala=False)
+            print(f"[UPLOAD] Sonuç: {result}", file=sys.stderr)
+
             # İşlem bitti - session'ı güncelle
             session.sec(yeni_id)
-            # CV'yi kaydet
-            if result.get("ok"):
-                try:
-                    commands.load()
-                except:
-                    pass
+            # CV'yi load et (disk'ten oku)
+            try:
+                cv_data = commands.load()
+                print(f"[UPLOAD] CV yüklendi: {len(cv_data.get('work', []))} deneyim", file=sys.stderr)
+            except Exception as e:
+                print(f"[UPLOAD] CV load hatası: {e}", file=sys.stderr)
         except Exception as e:
-            pass  # Sessizce başarısız - user intihar etmiş olabilir
+            print(f"[UPLOAD] Arka plan hatası: {e}", file=sys.stderr)
 
     thread = threading.Thread(target=arka_plan_isle, daemon=True)
     thread.start()

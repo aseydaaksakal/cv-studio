@@ -1346,19 +1346,27 @@ async function yukleDosya(file){
             }
 
             try {
-              // Durumu kontrol et
-              const state = await jpost("/state", {id: aktifOturum});
-              if (state.ok && state.cv && state.cv.work && state.cv.work.length > 0) {
-                // İşlem bitti, sayfayı yenile
-                clearInterval(kontrol_timer);
-                await refreshSheet();
-                await loadState();
-                hint.textContent = file.name + " işlendi: bölümler yüklendi";
+              // Durumu kontrol et (GET, POST değil!)
+              const response = await fetch(`http://localhost:8000/state?id=${encodeURIComponent(aktifOturum)}`);
+              const state = await response.json();
 
-                // UI'yi temizle
-                await new Promise(r => setTimeout(r, 500));
-                if (progressSafe.style) progressSafe.style.width = "0";
-                if (statusSafe) statusSafe.textContent = "";
+              // PDF işlenmesi tamamlandı mı? (sections varsa = içerik yüklendi)
+              if (state.ok && state.sections && state.sections.length > 0) {
+                // İçerik yüklendi! (work, education, skills vs varsa)
+                const totalItems = state.sections.reduce((sum, s) => sum + (s.items || 0), 0);
+
+                if (totalItems > 0) {
+                  // İşlem bitti, sayfayı yenile
+                  clearInterval(kontrol_timer);
+                  await refreshSheet();
+                  await loadState();
+                  hint.textContent = file.name + " işlendi: " + state.sections.length + " bölüm";
+
+                  // UI'yi temizle
+                  await new Promise(r => setTimeout(r, 500));
+                  if (progressSafe.style) progressSafe.style.width = "0";
+                  if (statusSafe) statusSafe.textContent = "";
+                }
               }
             } catch (e) {
               // Sessizce devam et
