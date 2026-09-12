@@ -101,6 +101,33 @@ def ad_ver(oid, ad):
     return meta_yaz(oid, ad=(str(ad).strip() or str(oid))[:80])
 
 
+def batch_ad_degistir(renames):
+    """Toplu ad değiştirme: [{id, newName}]
+
+    Tüm ID'leri validate et, hepsi geçerliyse hepsini güncelle.
+    Herhangi biri başarısızsa hiçbirini değiştirme (all-or-nothing).
+    """
+    if not isinstance(renames, list):
+        raise ValueError("renames bir liste olmalıdır")
+
+    # Validate hepsi
+    for item in renames:
+        oid = item.get("id", "")
+        yeni_ad = item.get("newName", "").strip()
+        if not var(oid):
+            raise ValueError("Oturum yok: {!r}".format(oid))
+        if not yeni_ad:
+            raise ValueError("Ad boş olamaz: {!r}".format(oid))
+
+    # Hepsi geçerliyse güncelle
+    for item in renames:
+        oid = item.get("id", "")
+        yeni_ad = item.get("newName", "").strip()[:80]
+        ad_ver(oid, yeni_ad)
+
+    return [ozet(item.get("id")) for item in renames]
+
+
 # --- olustur / sil / listele ------------------------------------------
 
 def yeni(ad="", kaynak=""):

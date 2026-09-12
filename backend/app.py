@@ -265,6 +265,18 @@ def oturum_kopyala(id: str):
         return {"ok": False, "error": str(e)}
 
 
+@app.post("/oturum/batch-ad-degistir")
+def oturum_batch_ad_degistir(istek: dict):
+    renames = istek.get("renames", [])
+    if not isinstance(renames, list):
+        return {"ok": False, "error": "renames bir liste olmalıdır"}
+    try:
+        oturumlar = session.batch_ad_degistir(renames)
+        return {"ok": True, "oturumlar": oturumlar}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+
+
 # --- komutlar ---------------------------------------------------------
 
 def _tasarim_adimlari(text, adimlar, mevcut_css):
