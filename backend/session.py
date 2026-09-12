@@ -1,18 +1,29 @@
-"""Oturum yonetimi: her CV kendi klasorunde yasar.
+"""Session management: each CV lives in its own directory.
 
-output\\oturum\\<id>\\ altinda o CV'ye ait cv_structured.json,
-cv_layout.json, cv_overrides.css, cv_generated.html ve history\\ durur.
-Aktif oturum output\\oturum\\aktif.json icinde yazilidir.
+Directory structure: output/oturum/<id>/ contains:
+  - cv_structured.json: parsed CV structure
+  - cv_layout.json: layout metadata
+  - cv_overrides.css: custom styles
+  - cv_generated.html: rendered output
+  - history/: snapshots for undo
+  - meta.json: metadata (name, source, notes, timestamps)
+  - aktif.json: currently active session ID
 
-commands.py ve render_cv.py yol sabitlerini modul duzeyinde tutuyor.
-baglan() bu sabitleri calisma aninda oturum klasorune cevirir; iki dosyaya
-da dokunmak gerekmez. test_commands.py zaten ayni yontemi kullaniyor.
+Key functions:
+  - yeni(ad, kaynak): Create new session
+  - sec(oid): Set as active (and bind paths)
+  - baglan(oid): Bind paths only
+  - liste(): All sessions with summaries
+  - sil(oid): Delete session
+  - kopyala(oid): Duplicate session
+  - notlar_yaz(oid, text): Add session notes (max 1000 chars)
+  - batch_ad_degistir(renames): Atomic batch rename
 
-Kullanim:
+Example:
     import session
-    oid = session.yeni(ad="Seyda CV", kaynak="cv.pdf")
-    session.sec(oid)              # aktif yapar + yollari baglar
-    session.baglan(oid)           # sadece yollari baglar
+    oid = session.yeni(ad="My CV", kaynak="cv.pdf")
+    session.sec(oid)  # Make active
+    sessions = session.liste()
 """
 
 import json
@@ -105,7 +116,20 @@ def ad_ver(oid, ad):
 
 
 def notlar_yaz(oid, notlar):
-    """Session'a not ekle veya güncelle (max 1000 karakter)."""
+    """Add or update session notes.
+
+    Args:
+        oid: Session ID
+        notlar: Note text (truncated to 1000 chars)
+
+    Returns:
+        Updated metadata dict
+
+    Notes:
+        - Max 1000 characters (excess is silently truncated)
+        - Empty notes clear the not_tarihi timestamp
+        - Timestamp (not_tarihi) updated on write
+    """
     notlar_str = (str(notlar).strip() or "")[:1000]
     return meta_yaz(oid, notlar=notlar_str, not_tarihi=int(time.time()) if notlar_str else 0)
 
@@ -140,6 +164,19 @@ def batch_ad_degistir(renames):
 # --- olustur / sil / listele ------------------------------------------
 
 def yeni(ad="", kaynak=""):
+    """Create new session with auto-generated ID.
+
+    Args:
+        ad: Session name (max 80 chars; default: "CV <id>")
+        kaynak: Source file name (PDF/DOCX filename)
+
+    Returns:
+        Session ID (4-digit string like "0001")
+
+    Creates:
+        output/oturum/<id>/ directory with history/ subdirectory
+        meta.json with name, source, and timestamps
+    """
     oid = _yeni_id()
     d = kok() / oid
     (d / "history").mkdir(parents=True, exist_ok=True)

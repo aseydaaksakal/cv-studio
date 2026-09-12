@@ -220,3 +220,226 @@ class TestSessionCreation:
 
         assert int(oid2) == int(oid1) + 1
         assert int(oid3) == int(oid2) + 1
+
+
+class TestSessionDeletion:
+    """Test session deletion."""
+
+    def test_sil_deletes_session(self, new_session):
+        """sil() deletes session directory."""
+        assert session.var(new_session)
+        result = session.sil(new_session)
+        assert result
+        assert not session.var(new_session)
+
+    def test_sil_nonexistent_session(self):
+        """sil() returns False for nonexistent session."""
+        result = session.sil("9999")
+        assert not result
+
+    def test_sil_updates_active_session(self, temp_session_dir):
+        """sil() updates active session if deleted."""
+        oid1 = session.yeni(ad="Session 1")
+        oid2 = session.yeni(ad="Session 2")
+        session.sec(oid2)  # Make oid2 active
+        assert session.aktif() == oid2
+
+        # Delete active session
+        session.sil(oid2)
+        # Should fall back to remaining session
+        assert session.aktif() == oid1
+
+
+class TestSessionCopy:
+    """Test session duplication."""
+
+    def test_kopyala_creates_copy(self, session_with_files):
+        """kopyala() creates independent copy."""
+        original_id = session_with_files
+        copy_id = session.kopyala(original_id)
+
+        assert copy_id != original_id
+        assert session.var(copy_id)
+
+        # Verify name has (Kopya) suffix
+        copy_meta = session.meta(copy_id)
+        assert "(Kopya)" in copy_meta["ad"]
+
+    def test_kopyala_invalid_session(self):
+        """kopyala() raises ValueError for invalid session."""
+        with pytest.raises(ValueError, match="Oturum yok"):
+            session.kopyala("9999")
+
+    def test_kopyala_copies_files(self, session_with_files):
+        """kopyala() copies all files from source."""
+        original_id = session_with_files
+        copy_id = session.kopyala(original_id)
+
+        original_dir = session.yol(original_id)
+        copy_dir = session.yol(copy_id)
+
+        # Check that files exist in copy
+        for filename in ("cv_structured.json", "cv_layout.json"):
+            assert (original_dir / filename).exists()
+            assert (copy_dir / filename).exists()
+
+
+class TestSessionSummary:
+    """Test session summary (ozet)."""
+
+    def test_ozet_returns_metadata(self, new_session):
+        """ozet() returns session metadata."""
+        summary = session.ozet(new_session)
+        assert summary["id"] == new_session
+        assert "ad" in summary
+        assert "kaynak" in summary
+        assert "hazir" in summary
+        assert "bolum" in summary
+        assert "gecmis" in summary
+
+    def test_ozet_counts_history(self, new_session):
+        """ozet() counts history snapshots."""
+        session_dir = session.yol(new_session)
+        history_dir = session_dir / "history"
+        history_dir.mkdir(exist_ok=True)
+
+        # Create fake history files
+        (history_dir / "snapshot1.json").write_text("{}")
+        (history_dir / "snapshot2.json").write_text("{}")
+
+        summary = session.ozet(new_session)
+        assert summary["gecmis"] == 2
+
+
+class TestSessionListing:
+    """Test listing all sessions."""
+
+    def test_liste_returns_all_sessions(self, temp_session_dir):
+        """liste() returns all sessions with summaries."""
+        oid1 = session.yeni(ad="Session 1")
+        oid2 = session.yeni(ad="Session 2")
+        oid3 = session.yeni(ad="Session 3")
+
+        sessions = session.liste()
+        assert len(sessions) == 3
+        ids = [s["id"] for s in sessions]
+        assert oid1 in ids
+        assert oid2 in ids
+        assert oid3 in ids
+
+
+class TestActiveSession:
+    """Test active session management."""
+
+    def test_aktif_returns_active_session(self, new_session):
+        """aktif() returns currently active session."""
+        session.sec(new_session)
+        assert session.aktif() == new_session
+
+    def test_aktif_returns_empty_if_none(self, temp_session_dir):
+        """aktif() returns empty string if no sessions."""
+        assert session.aktif() == ""
+
+    def test_sec_sets_active_session(self, new_session):
+        """sec() sets active session."""
+        session.sec(new_session)
+        assert session.aktif() == new_session
+
+    def test_sec_invalid_session(self):
+        """sec() raises ValueError for invalid session."""
+        with pytest.raises(ValueError, match="Oturum yok"):
+            session.sec("9999")
+
+    def test_baglanan_returns_bound_session(self):
+        """baglanan() returns bound session ID."""
+        bound = session.baglanan()
+        assert isinstance(bound, str)
+
+
+class TestErrorHandling:
+    """Test error handling and edge cases."""
+
+    def test_meta_handles_corrupted_json(self, new_session):
+        """meta() handles corrupted meta.json gracefully."""
+        meta_file = session.yol(new_session) / "meta.json"
+        meta_file.write_text("invalid json {]")
+
+        # Should return defaults
+        m = session.meta(new_session)
+        assert m["id"] == new_session
+        assert m["ad"] == new_session
+
+    def test_aktif_handles_corrupted_active_json(self, temp_session_dir):
+        """aktif() handles corrupted aktif.json gracefully."""
+        oid = session.yeni(ad="Test")
+
+        # Corrupt the aktif.json
+        aktif_file = session.kok() / "aktif.json"
+        aktif_file.write_text("invalid json {]")
+
+        # Should still return a valid session
+        result = session.aktif()
+        assert result == oid or result == ""
+
+    def test_hazirla_with_specific_session(self, new_session):
+        """hazirla() binds specific session."""
+        result = session.hazirla(new_session)
+        assert result == new_session
+
+    def test_hazirla_invalid_session(self):
+        """hazirla() returns empty for invalid session."""
+        result = session.hazirla("9999")
+        assert result == ""
+
+
+class TestLegacyMigration:
+    """Test legacy migration (devral)."""
+
+    def test_devral_does_nothing_if_sessions_exist(self, new_session):
+        """devral() returns empty if sessions already exist."""
+        result = session.devral()
+        assert result == ""
+
+
+class TestSessionIntegration:
+    """Integration tests combining multiple operations."""
+
+    def test_workflow_create_select_delete(self, temp_session_dir):
+        """Complete workflow: create, select, delete."""
+        oid = session.yeni(ad="Workflow Test")
+        assert session.var(oid)
+
+        session.sec(oid)
+        assert session.aktif() == oid
+
+        result = session.sil(oid)
+        assert result
+        assert not session.var(oid)
+
+    def test_workflow_copy_and_rename(self, session_with_files):
+        """Complete workflow: create, copy, rename."""
+        original_id = session_with_files
+
+        # Copy session
+        copy_id = session.kopyala(original_id)
+        assert copy_id != original_id
+
+        # Rename copy
+        new_name = "Renamed Copy"
+        session.ad_ver(copy_id, new_name)
+        assert session.meta(copy_id)["ad"] == new_name
+
+    def test_workflow_batch_operations(self, temp_session_dir):
+        """Complete workflow: batch rename multiple sessions."""
+        oid1 = session.yeni(ad="Session 1")
+        oid2 = session.yeni(ad="Session 2")
+
+        renames = [
+            {"id": oid1, "newName": "Updated 1"},
+            {"id": oid2, "newName": "Updated 2"}
+        ]
+
+        results = session.batch_ad_degistir(renames)
+        assert len(results) == 2
+        assert results[0]["ad"] == "Updated 1"
+        assert results[1]["ad"] == "Updated 2"
