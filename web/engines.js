@@ -27,7 +27,20 @@ export async function availableLocalModels() {
   try {
     const webllm = await import(WEBLLM_URL);
     const list = (webllm.prebuiltAppConfig?.model_list || [])
-      .filter((m) => /instruct|chat|it-/i.test(m.model_id) && !/embedding/i.test(m.model_id) && !m.model_id.includes("1.5B"))
+      .filter((m) => {
+        const id = m.model_id;
+        const mb = m.vram_required_MB || 0;
+        const gb = mb / 1024;
+        // Keep only models that actually work in browsers: <5.5GB, exclude unreliable ones
+        if (!/instruct|chat|it-/i.test(id) || /embedding/i.test(id)) return false;
+        if (id.includes("1.5B") || id.includes("70B") || id.includes("13B")) return false;
+        if (id.includes("Llama-3.1-8B") || id.includes("Llama-3-8B") && gb > 5.0) return false;
+        if (id.includes("Phi-3") && gb > 5.4) return false;
+        if (id.includes("gemma-2-9b") || id.includes("Llama-2-7b") && gb > 5.5) return false;
+        if (id.includes("Mistral") && gb > 5.0) return false;
+        if (gb > 5.8) return false;
+        return true;
+      })
       .map((m) => ({ id: m.model_id, mb: m.vram_required_MB || 0 }))
       .sort((a, b) => a.mb - b.mb);
     if (!list.length) return LOCAL_MODELS;
