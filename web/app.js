@@ -173,24 +173,6 @@ async function editWithAI(instruction) {
 async function readFile(file) {
   const name = file.name.toLowerCase();
   if (name.endsWith(".json")) { setCV(JSON.parse(await file.text()), { record: false }); showWorkspace(); say("assistant", "Loaded your saved CV. What should change?"); return; }
-
-  // Use backend to parse PDF/DOCX - no local model download needed
-  if (name.endsWith(".pdf") || name.endsWith(".docx")) {
-    status("Uploading to server…");
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      const res = await fetch("/api/parse-cv", { method: "POST", body: formData });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Upload failed");
-      await parseWithAI(data.text);
-      return;
-    } catch (e) {
-      status("Server unavailable. Using local parser…", true);
-      // Fallback: try local parsing
-    }
-  }
-
   let text;
   if (name.endsWith(".pdf")) {
     status("Reading PDF…");
