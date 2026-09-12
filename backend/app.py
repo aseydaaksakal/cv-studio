@@ -254,6 +254,17 @@ def oturum_batch_sil(istek: dict):
     return {"ok": True, "aktif": session.aktif(), "oturumlar": session.liste()}
 
 
+@app.post("/oturum/{id}/kopyala")
+def oturum_kopyala(id: str):
+    if not session.var(id):
+        return {"ok": False, "error": "Oturum yok: {!r}".format(id)}
+    try:
+        yeni_oid = session.kopyala(id)
+        return {"ok": True, "id": yeni_oid, "oturum": session.ozet(yeni_oid)}
+    except (ValueError, OSError) as e:
+        return {"ok": False, "error": str(e)}
+
+
 # --- komutlar ---------------------------------------------------------
 
 def _tasarim_adimlari(text, adimlar, mevcut_css):

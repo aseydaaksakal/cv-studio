@@ -123,6 +123,36 @@ def sil(oid):
     return True
 
 
+def kopyala(oid):
+    """Existing session'i kopyala. Yeni session'ın adına ' (Kopya)' ekle."""
+    if not var(oid):
+        raise ValueError("Oturum yok: {!r}".format(oid))
+
+    yeni_oid = _yeni_id()
+    kaynak_yol = yol(oid)
+    hedef_yol = yol(yeni_oid)
+
+    hedef_yol.mkdir(parents=True, exist_ok=True)
+
+    # Copy all files and directories
+    for item in kaynak_yol.iterdir():
+        if item.is_dir():
+            shutil.copytree(item, hedef_yol / item.name, dirs_exist_ok=True)
+        else:
+            shutil.copy2(item, hedef_yol / item.name)
+
+    # Update meta.json with new name
+    m = meta(yeni_oid)
+    orijinal_ad = m.get("ad", str(oid))
+    m["ad"] = "{} (Kopya)".format(orijinal_ad)[:80]
+    simdi = int(time.time())
+    m["olusturma"] = simdi
+    m["guncelleme"] = simdi
+    meta_yaz(yeni_oid, ad=m["ad"], olusturma=simdi, guncelleme=simdi)
+
+    return yeni_oid
+
+
 def ozet(oid):
     """Liste icin: ad, kaynak, bolum sayisi, geri alma derinligi."""
     d = meta(oid)

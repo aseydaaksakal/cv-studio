@@ -637,6 +637,7 @@ function renderSessionList(filtrelenmisList){
       <td><span class="session-meta">${o.bolum} bölüm</span></td>
       <td><span class="session-meta">${durumu}</span></td>
       <td class="session-actions">
+        <button class="session-btn copy" data-id="${o.id}" title="Kopyala">📋</button>
         <button class="session-btn rename" data-id="${o.id}" title="Adını değiştir">✎</button>
         <button class="session-btn delete" data-id="${o.id}" title="Sil">🗑</button>
       </td>
@@ -671,6 +672,12 @@ function renderSessionList(filtrelenmisList){
     tr.querySelector(".delete").addEventListener("click", (e) => {
       e.stopPropagation();
       deleteSession(o.id);
+    });
+
+    // Copy
+    tr.querySelector(".copy").addEventListener("click", (e) => {
+      e.stopPropagation();
+      copySession(o.id, o.ad || o.id);
     });
 
     sessionList.appendChild(tr);
@@ -837,6 +844,43 @@ async function renameSession(id, currentName){
       if (e.key === "Enter") submit();
       if (e.key === "Escape") cancel();
     };
+  });
+}
+
+async function copySession(id, name){
+  const dialog = $("#deleteDialog");
+  const deleteMsg = $("#deleteMsg");
+  const deleteOk = $("#deleteOk");
+  const deleteCancel = $("#deleteCancel");
+
+  deleteMsg.textContent = `"${name}" oturumunu kopyalamak istiyor musunuz? Yeni oturum "${name} (Kopya)" adıyla oluşturulacak.`;
+  dialog.style.display = "flex";
+
+  return new Promise((resolve) => {
+    const handleOk = async () => {
+      dialog.style.display = "none";
+      hint.textContent = "Oturum kopyalanıyor...";
+      try {
+        const r = await jpost(`/oturum/${id}/kopyala`, {});
+        if (r.ok) {
+          await loadOturumlar();
+          hint.textContent = `"${name}" oturumu kopyalandı: ${r.oturum.ad}`;
+        } else {
+          hint.textContent = "Kopyalama başarısız: " + (r.error || "Bilinmeyen hata");
+        }
+      } catch (e) {
+        hint.textContent = "Kopyalama hatası: " + e.message;
+      }
+      resolve();
+    };
+
+    const handleCancel = () => {
+      dialog.style.display = "none";
+      resolve();
+    };
+
+    deleteOk.onclick = handleOk;
+    deleteCancel.onclick = handleCancel;
   });
 }
 
