@@ -116,3 +116,40 @@ def ask_json(system, user, model=MODEL, num_ctx=8192):
             json.dumps(diag, ensure_ascii=False)))
 
     return data, diag
+
+
+def ask_text(system, user, model=MODEL):
+    """Modelden text ister. (metin, teshis) dondurur.
+
+    Web edition icin basit text completion.
+    """
+    payload = {
+        "model": model,
+        "stream": False,
+        "options": {
+            "temperature": 0,
+            "num_ctx": 8192,
+        },
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    }
+
+    t0 = time.time()
+    r = _post(payload)
+
+    if r.status_code != 200:
+        raise LLMError("Ollama {}: {}".format(r.status_code, r.text[:300]))
+
+    body = r.json()
+    msg = body.get("message") or {}
+    content = (msg.get("content") or "").strip()
+
+    diag = {
+        "model": model,
+        "sure": round(time.time() - t0, 1),
+        "done_reason": body.get("done_reason"),
+    }
+
+    return content, diag

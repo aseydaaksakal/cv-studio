@@ -79,12 +79,34 @@ async function callModel(system, user) {
     }
   }
   if (settings.provider === "ollama") {
+    // İlk olarak backend'i dene (CORS güvenli)
+    const backend = (settings.desktopurl || "http://localhost:8000").replace(/\/$/, "");
+    try {
+      const r = await fetch(backend + "/api/ollama-complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          system,
+          user,
+          model: settings.ollamamodel || "qwen3.8:27b"
+        })
+      });
+      if (r.ok) {
+        const result = await r.json();
+        if (result.ok) return result.content;
+        // Backend hata döndürdü, direkt Ollama'yı dene
+      }
+    } catch (e) {
+      // Backend erişilemez, direkt Ollama'yı dene
+    }
+
+    // Fallback: Direkt Ollama çağrısı (CORS sorunu olabilir)
     const base = (settings.ollamaurl || "http://localhost:11434").replace(/\/$/, "");
     let r;
     try {
       r = await fetch(base + "/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: settings.ollamamodel || "qwen3.8:27b", temperature: 0, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
-    } catch { throw new Error(`Cannot reach Ollama at ${base}. Is it running with OLLAMA_ORIGINS set? See the README.`); }
+    } catch { throw new Error(`Cannot reach Ollama at ${base}. Try running desktop backend: cd backend && python -m uvicorn app:app --port 8000`); }
     if (!r.ok) throw new Error(`Ollama returned ${r.status}: ${(await r.text()).slice(0, 200)}`);
     return (await r.json()).choices[0].message.content;
   }

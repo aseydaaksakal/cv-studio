@@ -480,6 +480,31 @@ def command(cmd: Command, id: str = ""):
     }
 
 
+class CompleteRequest(BaseModel):
+    system: str
+    user: str
+    model: str = ""
+
+@app.post("/api/ollama-complete")
+def ollama_complete(request: CompleteRequest):
+    """Web edition icin Ollama text completion.
+
+    WebGPU cache hatasi aldigi zaman web'den Ollama'ya geri doner.
+    """
+    try:
+        content, diag = llm.ask_text(request.system, request.user, request.model or llm.MODEL)
+        return {
+            "ok": True,
+            "content": content,
+            "diag": diag
+        }
+    except llm.LLMError as e:
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
 @app.post("/design/reset")
 def design_reset(id: str = ""):
     if not _hazirla(id):
