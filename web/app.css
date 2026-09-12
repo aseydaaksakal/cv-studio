@@ -151,3 +151,46 @@ select.mini { width:auto; margin:0; padding:.35rem .5rem; font-size:.8rem; max-w
 .session-item-meta { font-size: .75rem; color: var(--muted); margin-top: .2rem; }
 .session-item-notes { font-size: .8rem; color: var(--muted); margin-top: .2rem; max-height: 2.8em; overflow: hidden; }
 .session-item-empty { padding: 2rem 1rem; text-align: center; color: var(--muted); }
+
+/* ───── mobile improvements ───── */
+@media (max-width: 640px) {
+  html, body { font-size: 16px; }
+  .toolbar { padding: .5rem .7rem; gap: .4rem; }
+  .toolbar button, .toolbar select { padding: .4rem .6rem; font-size: .85rem; }
+  button { min-height: 44px; min-width: 44px; }
+  .icon { width: 44px; height: 44px; }
+  input[type=text], textarea, select { min-height: 44px; padding: .6rem; }
+  .sessions-dlg { min-width: auto; width: 95vw; max-width: 500px; }
+  .sessions-list { max-height: 60vh; }
+  .msg { max-width: 95%; }
+  .workspace { grid-template-columns: 1fr; }
+  .side { border-left: 0; border-top: 1px solid var(--line); }
+  .row { flex-direction: column; gap: .6rem; }
+  .row.end { align-items: stretch; }
+  .row.end button { width: 100%; }
+  .dlg { padding: 1rem; }
+  .dlg h2 { font-size: .95rem; }
+  .shortcuts-list { gap: .4rem; }
+  .shortcut-row { flex-direction: column; gap: .3rem; align-items: flex-start; }
+  .shortcut-row code { width: 100%; text-align: center; }
+}
+
+@media (max-width: 480px) {
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .toolbar button, .toolbar label, .toolbar select { width: 100%; text-align: left; }
+  .spacer { display: none; }
+  .drop.big { padding: 2rem 1rem; }
+  .drop-inner .logo { font-size: 1.2rem; }
+  .lead { font-size: 1.1rem; }
+  .landing-actions { flex-direction: column; }
+  .landing-actions button { width: 100%; }
+  .composer { padding: .5rem .6rem; }
+  .box textarea { padding-right: 3rem; min-height: 2.8rem; font-size: 16px; }
+  .icon.in-box { width: 2rem; height: 2rem; font-size: .9rem; }
+  #btn-mic.in-box { right: 2.2rem; }
+  #btn-ask.in-box { right: .3rem; }
+  .sessions-search { flex-wrap: wrap; }
+  .sessions-search input { flex-basis: 100%; order: 1; }
+  .sessions-search select { order: 2; flex-basis: 100%; }
+  .sessions-search-count { order: 3; width: 100%; text-align: left; margin-top: .3rem; }
+}

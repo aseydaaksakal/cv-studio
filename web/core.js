@@ -441,6 +441,33 @@ export function exportSessionsAsJSON(ids) {
   return JSON.stringify(toExport, null, 2);
 }
 
+export function archiveSession(id) {
+  const session = getSession(id);
+  if (session) {
+    session.archived = true;
+    session.archivedDate = new Date().toISOString();
+    updateSession(id, session);
+  }
+}
+
+export function unarchiveSession(id) {
+  const session = getSession(id);
+  if (session) {
+    session.archived = false;
+    delete session.archivedDate;
+    updateSession(id, session);
+  }
+}
+
+export function listArchivedSessions() {
+  const all = Object.values(mockStorage).filter((s) => s && s.id !== "active-session-id");
+  return all.filter((s) => s.archived).sort((a, b) => new Date(b.modified) - new Date(a.modified));
+}
+
+export function listActiveSessions() {
+  return listSessions().filter((s) => !s.archived);
+}
+
 /* ───────────────────────── dark mode theme management ───────────────────────── */
 
 const THEME_KEY = "cvstudio:theme";
