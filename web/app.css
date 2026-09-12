@@ -79,6 +79,13 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .shortcut-row code { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: .2rem .4rem; font-family: monospace; color: var(--accent); font-size: .8rem; white-space: nowrap; }
 .shortcut-row span { color: var(--muted); flex: 1; }
 
+/* ───── session search ───── */
+.sessions-search { display: flex; gap: .5rem; align-items: center; margin: .8rem 0; padding: .6rem .8rem; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+.sessions-search input { flex: 1; border: 0; background: transparent; color: var(--text); padding: 0; font-size: .85rem; }
+.sessions-search input::placeholder { color: var(--muted); }
+.sessions-search input:focus { outline: 0; }
+#sessions-search-count { min-width: 3rem; text-align: right; }
+
 /* ───── landing ───── */
 .landing { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2rem; }
 .drop.big { width:min(42rem, 100%); padding:3.5rem 2rem; border-width:2px; }

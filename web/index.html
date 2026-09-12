@@ -104,6 +104,10 @@
       <button type="button" id="btn-rename-sessions" class="ghost small" disabled>✏️ Rename</button>
       <button type="button" id="btn-export-sessions" class="ghost small" disabled>📦 Export</button>
     </div>
+    <div class="sessions-search">
+      <input type="text" id="sessions-search-input" placeholder="Search CVs by name, date, or notes... (Ctrl+F)">
+      <span id="sessions-search-count" class="muted small"></span>
+    </div>
     <div class="sessions-list" id="sessions-list"></div>
     <div class="row end">
       <button value="cancel" class="ghost">Close</button>
@@ -156,6 +160,10 @@
       <div class="shortcut-row">
         <code>Ctrl+M</code>
         <span>Toggle microphone</span>
+      </div>
+      <div class="shortcut-row">
+        <code>Ctrl+F</code>
+        <span>Search CVs (in My CVs dialog)</span>
       </div>
     </div>
     <p class="muted small">On Mac, use <code>Cmd</code> instead of <code>Ctrl</code></p>

@@ -468,14 +468,43 @@ async function showInputDialog(title, placeholder = "", defaultValue = "") {
   return inputEl.value;
 }
 
-function renderSessionsList() {
-  const container = $("#sessions-list");
+function filterSessions(query) {
   const sessions = listSessions();
+  if (!query.trim()) return sessions;
+
+  const q = query.toLowerCase();
+  return sessions.filter(s =>
+    s.name.toLowerCase().includes(q) ||
+    new Date(s.modified).toLocaleDateString().toLowerCase().includes(q) ||
+    (s.notes && s.notes.toLowerCase().includes(q))
+  );
+}
+
+function renderSessionsList(searchQuery = "") {
+  const container = $("#sessions-list");
+  const sessions = searchQuery ? filterSessions(searchQuery) : listSessions();
   const selected = new Set(getSelectedSessions());
   const activeId = getActiveSession()?.id;
+  const total = listSessions().length;
+
+  // Update search count
+  const countEl = $("#sessions-search-count");
+  if (countEl) {
+    if (searchQuery && sessions.length !== total) {
+      countEl.textContent = `${sessions.length}/${total}`;
+    } else if (total > 0) {
+      countEl.textContent = `${total}`;
+    } else {
+      countEl.textContent = "";
+    }
+  }
 
   if (sessions.length === 0) {
-    container.innerHTML = '<div class="session-item-empty">No CVs yet. Create one to get started.</div>';
+    if (searchQuery) {
+      container.innerHTML = '<div class="session-item-empty">No CVs match your search.</div>';
+    } else {
+      container.innerHTML = '<div class="session-item-empty">No CVs yet. Create one to get started.</div>';
+    }
     return;
   }
 
@@ -510,8 +539,17 @@ function updateSessionsToolbar() {
 function showSessionsManager() {
   renderSessionsList();
   updateSessionsToolbar();
+  const searchInput = $("#sessions-search-input");
+  searchInput.value = "";  // Clear search
+  searchInput.focus();     // Focus search input
   $("#sessions").showModal();
 }
+
+// Session search with real-time filtering
+$("#sessions-search-input").oninput = (e) => {
+  renderSessionsList(e.target.value);
+  updateSessionsToolbar();
+};
 
 $("#btn-sessions").onclick = showSessionsManager;
 
@@ -652,6 +690,15 @@ document.addEventListener("keydown", (e) => {
   if (mod && e.key.toLowerCase() === "m") {
     e.preventDefault();
     $("#btn-mic").click();
+  }
+
+  // Ctrl/Cmd+F → search sessions (or find in browser)
+  if (mod && e.key.toLowerCase() === "f") {
+    const openDialog = document.querySelector("dialog[open]");
+    if (openDialog && openDialog.id === "sessions") {
+      e.preventDefault();
+      $("#sessions-search-input").focus();
+    }
   }
 });
 
