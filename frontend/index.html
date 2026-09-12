@@ -579,6 +579,31 @@ async function loadOturumlar(){
 
 let seciliOturumlar = new Set();
 
+const STORAGE_KEY = "cv-studio:selected-sessions";
+
+function persistSelections(){
+  try {
+    const ids = Array.from(seciliOturumlar);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+  } catch (e) {
+    console.warn("localStorage unavailable:", e.message);
+  }
+}
+
+function loadSelections(){
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const ids = JSON.parse(stored);
+      seciliOturumlar.clear();
+      ids.forEach(id => seciliOturumlar.add(id));
+    }
+  } catch (e) {
+    console.warn("Failed to load selections from localStorage:", e.message);
+    seciliOturumlar.clear();
+  }
+}
+
 function updateBatchDeleteBtn(){
   const batchBtn = $("#batchDeleteBtn");
   if (seciliOturumlar.size > 0) {
@@ -628,6 +653,7 @@ function renderSessionList(filtrelenmisList){
       }
       updateBatchDeleteBtn();
       updateSelectAllCheckbox();
+      persistSelections();
     });
 
     // Session seç
@@ -846,6 +872,7 @@ async function showNewSessionDialog(){
       if (r.ok) {
         await loadOturumlar();
         seciliOturumlar.clear();
+        persistSelections();
         updateBatchDeleteBtn();
         hint.textContent = `"${ad}" oturumu oluşturuldu`;
       } else {
@@ -889,6 +916,7 @@ async function batchDeleteSessions(){
       const r = await jpost("/oturum/batch-sil", {ids});
       if (r.ok) {
         seciliOturumlar.clear();
+        persistSelections();
         updateBatchDeleteBtn();
         await loadOturumlar();
         hint.textContent = `${count} oturum silindi`;
@@ -1037,7 +1065,9 @@ uploadLabel.addEventListener("drop", e => {
 sessionBtn.addEventListener("click", () => {
   sessionModal.style.display = "flex";
   sessionSearch.focus();
+  loadSelections();
   updateSelectAllCheckbox();
+  updateBatchDeleteBtn();
 });
 closeSession.addEventListener("click", () => {
   sessionModal.style.display = "none";
@@ -1068,6 +1098,7 @@ $("#selectAllChk").addEventListener("change", (e) => {
     });
   }
   updateBatchDeleteBtn();
+  persistSelections();
 });
 
 const renameDialog = $("#renameDialog");
