@@ -412,6 +412,7 @@ const openSettings = () => {
   syncSettingsForm(); dlg.showModal(); loadRealModelList();
 };
 $("#btn-settings").onclick = openSettings; $("#btn-settings-landing").onclick = openSettings;
+$("#btn-shortcuts").onclick = () => $("#shortcuts").showModal();
 $("#provider").onchange = syncSettingsForm; $("#engine").onchange = syncSettingsForm;
 $("#localmodel").onchange = syncSettingsForm; $("#ollamaurl").onchange = syncSettingsForm;
 $("#btn-test-model").onclick = async () => {
@@ -608,6 +609,51 @@ if (sessions.length === 0 && saved) {
 }
 
 initTheme();
+
+/* ───────────────────────── keyboard shortcuts ───────────────────────── */
+document.addEventListener("keydown", (e) => {
+  const isMac = /Mac/.test(navigator.platform);
+  const mod = isMac ? e.metaKey : e.ctrlKey;
+
+  // Enter in composer → submit (unless Shift+Enter)
+  if (e.key === "Enter" && e.target === $("#ask") && !e.shiftKey) {
+    e.preventDefault();
+    $("#btn-ask").click();
+  }
+
+  // Escape → close open modals or dialogs
+  if (e.key === "Escape") {
+    const openDialog = document.querySelector("dialog[open]");
+    if (openDialog) {
+      openDialog.close();
+      e.preventDefault();
+    }
+  }
+
+  // Ctrl/Cmd+Z → undo
+  if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) {
+    e.preventDefault();
+    $("#btn-undo").click();
+  }
+
+  // Ctrl/Cmd+S → download PDF
+  if (mod && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    $("#btn-pdf").click();
+  }
+
+  // Ctrl/Cmd+, or Cmd+K → open settings
+  if ((mod && e.key === ",") || (isMac && mod && e.key.toLowerCase() === "k")) {
+    e.preventDefault();
+    openSettings();
+  }
+
+  // Ctrl/Cmd+M → toggle mic
+  if (mod && e.key.toLowerCase() === "m") {
+    e.preventDefault();
+    $("#btn-mic").click();
+  }
+});
 
 if (sessions.length > 0) {
   loadActiveSession();

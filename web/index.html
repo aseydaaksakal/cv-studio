@@ -49,6 +49,7 @@
       <button id="btn-json" class="ghost small">Save JSON</button>
       <button id="btn-txt" class="ghost small">Plain text</button>
       <button id="btn-new" class="ghost small">New CV</button>
+      <button id="btn-shortcuts" class="icon" title="Keyboard shortcuts">⌨️</button>
       <button id="btn-theme" class="icon" title="Toggle dark mode">🌙</button>
       <button id="btn-settings" class="icon" title="Settings">⚙</button>
     </div>
@@ -118,6 +119,48 @@
     <div class="row end">
       <button value="cancel" class="ghost">Cancel</button>
       <button value="ok" class="primary">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ───────── keyboard shortcuts help ───────── -->
+<dialog id="shortcuts">
+  <form method="dialog" class="dlg">
+    <h2>Keyboard Shortcuts</h2>
+    <p class="muted">Speed up your workflow with these shortcuts:</p>
+    <div class="shortcuts-list">
+      <div class="shortcut-row">
+        <code>Enter</code>
+        <span>Apply your edit</span>
+      </div>
+      <div class="shortcut-row">
+        <code>Shift+Enter</code>
+        <span>New line in text</span>
+      </div>
+      <div class="shortcut-row">
+        <code>Escape</code>
+        <span>Close dialogs</span>
+      </div>
+      <div class="shortcut-row">
+        <code>Ctrl+Z</code>
+        <span>Undo last change</span>
+      </div>
+      <div class="shortcut-row">
+        <code>Ctrl+S</code>
+        <span>Download PDF</span>
+      </div>
+      <div class="shortcut-row">
+        <code>Ctrl+,</code>
+        <span>Open settings</span>
+      </div>
+      <div class="shortcut-row">
+        <code>Ctrl+M</code>
+        <span>Toggle microphone</span>
+      </div>
+    </div>
+    <p class="muted small">On Mac, use <code>Cmd</code> instead of <code>Ctrl</code></p>
+    <div class="row end">
+      <button value="ok" class="primary">Got it</button>
     </div>
   </form>
 </dialog>

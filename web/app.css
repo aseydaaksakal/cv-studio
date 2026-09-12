@@ -74,6 +74,10 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .dlg h2 { margin: 0 0 .3rem; font-size: 1.05rem; }
 .dlg label { display: block; font-size: .8rem; color: var(--muted); margin-top: .6rem; }
 .dlg a { color: var(--accent); }
+.shortcuts-list { margin: 1rem 0; display: flex; flex-direction: column; gap: .5rem; }
+.shortcut-row { display: flex; align-items: center; gap: 1rem; font-size: .85rem; }
+.shortcut-row code { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: .2rem .4rem; font-family: monospace; color: var(--accent); font-size: .8rem; white-space: nowrap; }
+.shortcut-row span { color: var(--muted); flex: 1; }
 
 /* ───── landing ───── */
 .landing { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2rem; }
