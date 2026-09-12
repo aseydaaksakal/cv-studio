@@ -153,23 +153,37 @@ def do_render(id: str = ""):
 
 @app.get("/preview")
 def preview(id: str = ""):
-    """Diskteki cv_generated.html. Eger PNG varsa onu serve et!"""
+    """CV preview - PNG varsa HTML'de göster!"""
     if not _hazirla(id):
-        return HTMLResponse("<p>Onizleme yok. Once /render cagir.</p>",
-                            status_code=404, headers=NO_CACHE)
+        return HTMLResponse("<html><body><p>Onizleme yok.</p></body></html>",
+                            status_code=200, headers=NO_CACHE)
 
-    # PNG varsa serve et (hemen görülür)
+    # PNG varsa HTML'de göster
     png_path = Path(__file__).parent.parent / "output" / "oturum" / id / "cv_page1.png"
     if png_path.exists():
-        print(f"[PREVIEW] PNG serving: {png_path}", file=sys.stderr, flush=True)
-        return FileResponse(png_path, media_type="image/png", headers=NO_CACHE)
+        print(f"[PREVIEW] Serving PNG in HTML: {png_path}", file=sys.stderr, flush=True)
+        return HTMLResponse(
+            f"""<html>
+            <head><style>body {{ margin: 0; padding: 0; background: #fff; }} img {{ max-width: 100%; height: auto; display: block; }}</style></head>
+            <body><img src="/preview_image?id={id}" alt="CV Preview"></body>
+            </html>""",
+            status_code=200, headers=NO_CACHE)
 
-    # Yoksa HTML serve et
-    p = render_cv.HTML_OUT
-    if not p.exists():
-        return HTMLResponse("<html><body><p>Yükleniyor...</p></body></html>",
-                            status_code=200, headers=NO_CACHE)
-    return FileResponse(p, media_type="text/html", headers=NO_CACHE)
+    # Stub göster
+    return HTMLResponse(
+        "<html><body style='margin:0;'><p style='padding:20px;'>Yükleniyor...</p></body></html>",
+        status_code=200, headers=NO_CACHE)
+
+
+@app.get("/preview_image")
+def preview_image(id: str = ""):
+    """PNG dosyasını doğrudan serve et"""
+    if not _hazirla(id):
+        return HTMLResponse("Not found", status_code=404)
+    png_path = Path(__file__).parent.parent / "output" / "oturum" / id / "cv_page1.png"
+    if not png_path.exists():
+        return HTMLResponse("Not found", status_code=404)
+    return FileResponse(png_path, media_type="image/png", headers=NO_CACHE)
 
 
 @app.get("/state")
