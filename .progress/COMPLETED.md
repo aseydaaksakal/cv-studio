@@ -157,3 +157,23 @@ All acceptance criteria met. Ready for Stage 6d-7h: Advanced Session Features.
 - ✅ New session creation clears selections
 - ✅ Select All checkbox integration working
 - ✅ No errors in console
+
+### 1.2 Session Duplication (COMPLETE ✅)
+- [x] Backend endpoint: `POST /oturum/{id}/kopyala`
+- [x] Recursive file copying with shutil.copytree
+- [x] Auto-generated new session ID (4-digit format)
+- [x] Session name formatting: "{Original} (Kopya)"
+- [x] Frontend copy button (📋) per session row
+- [x] Confirmation dialog with session info
+- [x] Progress notification during copy
+- [x] Auto-refresh session list on success
+- [x] Error handling for missing sessions and disk errors
+
+**Test Results:**
+- ✅ Copy button visible on all sessions
+- ✅ Confirmation dialog shows correct message
+- ✅ Copied session appears in list with "(Kopya)" suffix
+- ✅ Copied session has all original files (cv.pdf, 5 bölüm, 3 adım)
+- ✅ Original session unchanged
+- ✅ New session ID generated correctly (4-digit format)
+- ✅ Checkbox persistence still works (Feature #1 integration)

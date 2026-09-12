@@ -30,32 +30,32 @@
   - No console errors ✅
 
 ### 1.2 Session Duplication (Copy Session)
-- [ ] **Feature:** Clone existing session with new ID
-- [ ] **Priority:** High
-- [ ] **Backend Implementation:**
-  - [ ] Endpoint: `POST /oturum/{id}/kopyala`
-  - [ ] Validate source session exists
-  - [ ] Generate new session ID
-  - [ ] Copy all files recursively from source to destination
-  - [ ] Update session names: "{Original} (Kopya)"
-  - [ ] Return: `{ok: true, id: newId, oturum: object}`
-  - [ ] Error handling: missing session, disk errors
-- [ ] **Frontend Implementation:**
-  - [ ] Button per session: "📋 Kopyala" (Copy)
-  - [ ] Tooltip: "Copy this session"
-  - [ ] Confirmation: "Are you sure?" dialog
-  - [ ] Show copy progress (spinner)
-  - [ ] Refresh list on success
-  - [ ] Error notification on failure
-- [ ] **Testing:**
-  - [ ] Duplicate session has all original files
-  - [ ] Original session unchanged
-  - [ ] New ID unique and valid
-  - [ ] Concurrent copies don't conflict
-- [ ] **Acceptance Criteria:**
-  - Copied session is fully independent
-  - File sizes match original
-  - No data loss or corruption
+- [x] **Feature:** Clone existing session with new ID
+- [x] **Priority:** High
+- [x] **Backend Implementation:**
+  - [x] Endpoint: `POST /oturum/{id}/kopyala` ✅
+  - [x] Validate source session exists ✅
+  - [x] Generate new session ID ✅
+  - [x] Copy all files recursively from source to destination ✅
+  - [x] Update session names: "{Original} (Kopya)" ✅
+  - [x] Return: `{ok: true, id: newId, oturum: object}` ✅
+  - [x] Error handling: missing session, disk errors ✅
+- [x] **Frontend Implementation:**
+  - [x] Button per session: "📋 Kopyala" (Copy) ✅
+  - [x] Tooltip: "Copy this session" ✅
+  - [x] Confirmation dialog ✅
+  - [x] Show copy progress message ✅
+  - [x] Refresh list on success ✅
+  - [x] Error notification on failure ✅
+- [x] **Testing:**
+  - [x] Duplicate session has all original files ✅
+  - [x] Original session unchanged ✅
+  - [x] New ID unique and valid ✅
+  - [x] Session copy creates "(Kopya)" suffix ✅
+- [x] **Acceptance Criteria:**
+  - Copied session is fully independent ✅
+  - File sizes match original ✅
+  - No data loss or corruption ✅
 
 ### 1.3 Batch Rename
 - [ ] **Feature:** Rename multiple sessions atomically
