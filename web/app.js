@@ -245,26 +245,6 @@ async function startRecording(transcribe) {
   const chunks = [];
   recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm" });
   recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-
-  let silenceTimeout = null;
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const analyser = audioCtx.createAnalyser();
-  const source = audioCtx.createMediaStreamSource(stream);
-  source.connect(analyser);
-  analyser.fftSize = 2048;
-  const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-  const detectSilence = () => {
-    analyser.getByteFrequencyData(dataArray);
-    const sum = dataArray.reduce((a, b) => a + b, 0);
-    const average = sum / dataArray.length;
-    if (average < 10) { // Silence threshold
-      if (!silenceTimeout) silenceTimeout = setTimeout(() => { if (recorder.state === "recording") recorder.stop(); }, 1500);
-    } else clearTimeout(silenceTimeout), silenceTimeout = null;
-    if (recorder.state === "recording") requestAnimationFrame(detectSilence);
-  };
-  detectSilence();
-
   recorder.onstop = async () => {
     stream.getTracks().forEach((t) => t.stop()); setLive(false); micStatus("Transcribing…");
     try {
@@ -273,13 +253,12 @@ async function startRecording(transcribe) {
         $("#ask").value = text;
         $("#composer").dispatchEvent(new Event("submit")); // Auto-submit
       } else {
-        const via = settings.engine === "browser" ? "browser recognition" : settings.engine === "whisper" ? "Whisper API" : settings.engine === "desktop" ? "desktop backend" : `Whisper ${String(settings.localwhisper).split("/").pop()}`;
-        micStatus(`Heard nothing via ${via} — try again closer to the mic.`);
+        micStatus("No speech detected. Try again.");
       }
     } catch (e) { micStatus(String(e.message || e)); }
     status(""); $("#ask").focus();
   };
-  recorder.start(); setLive(true); micStatus("Recording…");
+  recorder.start(); setLive(true); micStatus("Recording… (click to stop)");
 }
 
 async function transcribeLocally(blob) {
