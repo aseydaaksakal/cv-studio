@@ -480,9 +480,36 @@ function filterSessions(query) {
   );
 }
 
+function sortSessions(sessions, sortBy = "date-desc") {
+  const sorted = [...sessions];
+
+  switch (sortBy) {
+    case "date-asc":
+      sorted.sort((a, b) => new Date(a.modified) - new Date(b.modified));
+      break;
+    case "date-desc":
+      sorted.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+      break;
+    case "name-asc":
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+      break;
+    case "name-desc":
+      sorted.sort((a, b) => b.name.localeCompare(a.name));
+      break;
+  }
+
+  return sorted;
+}
+
 function renderSessionsList(searchQuery = "") {
   const container = $("#sessions-list");
-  const sessions = searchQuery ? filterSessions(searchQuery) : listSessions();
+  let sessions = searchQuery ? filterSessions(searchQuery) : listSessions();
+
+  // Apply sorting
+  const sortSelect = $("#sessions-sort");
+  const sortBy = sortSelect ? sortSelect.value : "date-desc";
+  sessions = sortSessions(sessions, sortBy);
+
   const selected = new Set(getSelectedSessions());
   const activeId = getActiveSession()?.id;
   const total = listSessions().length;
@@ -540,7 +567,16 @@ function showSessionsManager() {
   renderSessionsList();
   updateSessionsToolbar();
   const searchInput = $("#sessions-search-input");
+  const sortSelect = $("#sessions-sort");
+
   searchInput.value = "";  // Clear search
+
+  // Restore sort preference
+  const savedSort = localStorage.getItem("cvstudio.sessions-sort");
+  if (savedSort && sortSelect) {
+    sortSelect.value = savedSort;
+  }
+
   searchInput.focus();     // Focus search input
   $("#sessions").showModal();
 }
@@ -548,6 +584,14 @@ function showSessionsManager() {
 // Session search with real-time filtering
 $("#sessions-search-input").oninput = (e) => {
   renderSessionsList(e.target.value);
+  updateSessionsToolbar();
+};
+
+// Session sorting
+$("#sessions-sort").onchange = (e) => {
+  localStorage.setItem("cvstudio.sessions-sort", e.target.value);
+  const searchInput = $("#sessions-search-input");
+  renderSessionsList(searchInput ? searchInput.value : "");
   updateSessionsToolbar();
 };
 

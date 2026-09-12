@@ -84,6 +84,9 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .sessions-search input { flex: 1; border: 0; background: transparent; color: var(--text); padding: 0; font-size: .85rem; }
 .sessions-search input::placeholder { color: var(--muted); }
 .sessions-search input:focus { outline: 0; }
+.sessions-search select { border: 0; background: transparent; color: var(--muted); padding: 0; font-size: .85rem; cursor: pointer; min-width: 80px; }
+.sessions-search select:hover { color: var(--text); }
+.sessions-search select:focus { outline: 0; color: var(--accent); }
 #sessions-search-count { min-width: 3rem; text-align: right; }
 
 /* ───── landing ───── */
