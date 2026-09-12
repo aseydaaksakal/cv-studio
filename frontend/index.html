@@ -873,19 +873,39 @@ async function batchDeleteSessions(){
 
   const ids = Array.from(seciliOturumlar);
   const count = ids.length;
+
+  const dialog = $("#deleteDialog");
+  const deleteMsg = $("#deleteMsg");
+  const deleteOk = $("#deleteOk");
+  const deleteCancel = $("#deleteCancel");
+
   const msg = count === 1 ? "Bu oturumu silmek istiyor musunuz?" : `${count} oturumu silmek istiyor musunuz?`;
+  deleteMsg.textContent = msg + "\nBu işlem geri alınamaz.";
+  dialog.style.display = "flex";
 
-  if (!confirm(msg + "\nBu işlem geri alınamaz.")) return;
+  return new Promise((resolve) => {
+    const handleOk = async () => {
+      dialog.style.display = "none";
+      const r = await jpost("/oturum/batch-sil", {ids});
+      if (r.ok) {
+        seciliOturumlar.clear();
+        updateBatchDeleteBtn();
+        await loadOturumlar();
+        hint.textContent = `${count} oturum silindi`;
+      } else {
+        hint.textContent = "Silme başarısız: " + (r.error || "Bilinmeyen hata");
+      }
+      resolve();
+    };
 
-  const r = await jpost("/oturum/batch-sil", {ids});
-  if (r.ok) {
-    seciliOturumlar.clear();
-    updateBatchDeleteBtn();
-    await loadOturumlar();
-    hint.textContent = `${count} oturum silindi`;
-  } else {
-    hint.textContent = "Silme başarısız: " + (r.error || "Bilinmeyen hata");
-  }
+    const handleCancel = () => {
+      dialog.style.display = "none";
+      resolve();
+    };
+
+    deleteOk.onclick = handleOk;
+    deleteCancel.onclick = handleCancel;
+  });
 }
 async function yukleDosya(file){
   if (!file) return;
