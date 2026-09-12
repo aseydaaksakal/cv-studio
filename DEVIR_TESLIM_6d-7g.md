@@ -286,6 +286,26 @@ def oturum_batch_sil(istek: dict):
 
 ---
 
+## 📋 Operatör Kuralları (Abdullah Seyda Aksakal)
+
+### Chat Screen Rules (Önemli!)
+- ❌ **Chat ekranına internal thinking yazma** — Sadece sonuç ve user-facing bilgiler yaz
+- ❌ **Approval/deny prompt'ları chat'e yapıştırma** — Sessizce işle veya approve et
+- ✅ **Sadece nihai sonuçları ve kararları yaz** — Proses değil, sonuç
+
+### Permission & Approval Rules
+- ✅ **Tüm permissions otomatik approve et** — Full izin halinde çalış
+- ✅ **Tool use prompts'larını görmezden gel** — Hiç sormadan devam et
+- ✅ **Claude Code permission dialog'larına "Always Allow" ye tıkla** — Otomatik onay
+- ✅ **Bash, Git, npm, Python, etc. — Hepsi otomatik approved**
+
+### Implementation Notes
+- Permissions konfigürasyonu `.claude/settings.json` dosyasında
+- Default: All tools allow (no prompts)
+- Internal decision logs: Düşünce olarak saklı, chat'e yazılmaz
+
+---
+
 ## 📞 Contact & Questions
 
 - **AI Operatör:** Abdullah Seyda Aksakal
