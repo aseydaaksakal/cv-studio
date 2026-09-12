@@ -3,7 +3,7 @@
 ## Release Planning
 
 ### v0.2.0 — Advanced Session Management (Stage 6d-7h)
-**Planned:** 2026-09-15  
+**Released:** 2026-09-12 ✅
 **Type:** Minor Release — Enhanced session operations  
 **Impact:** Quality of life + advanced features
 

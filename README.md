@@ -20,6 +20,20 @@ CV Studio is a CV editor that works the way you would brief a person: give it th
 
 It runs entirely in your browser. There is no server and, by default, **no API key**: an open-source model (Qwen 2.5) and Whisper run on your own GPU through WebGPU, the way the desktop edition runs Ollama. Your CV never leaves the machine. If you prefer, switch to Anthropic or any OpenAI-compatible provider with your own key.
 
+## Desktop Edition Features
+
+The desktop edition includes **Session Management** (v0.2.0):
+- **Create multiple CV sessions** — one workspace, many CVs
+- **Checkpoint & undo** — every edit creates a snapshot
+- **Batch operations** — select & act on multiple sessions at once
+  - **Copy session** — duplicate with auto-naming
+  - **Batch rename** — update names simultaneously
+  - **Session notes** — add persistent annotations (1000 char limit)
+  - **Export as ZIP** — download sessions for backup or sharing
+- **Persistent selection state** — selections survive modal close/reopen, page refresh
+
+Run with `./venv/Scripts/uvicorn.exe app:app --reload --port 8000` from `backend/`.
+
 ## How it works
 
 ```
