@@ -63,7 +63,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 
 main{display:grid;grid-template-columns:1fr 360px;min-height:0}
 #left{overflow:auto;display:flex;flex-direction:column;min-width:0}
-#stage{flex:1;display:flex;justify-content:center;padding:24px 24px 8px}
+#stage{flex:1;display:flex;justify-content:center;align-items:center;padding:32px 32px 16px}
 
 /* ---- kagit ---- */
 #wrap{zoom:1;transform:none}         /* scale() DEGIL: zoom, metin net kalir */
@@ -75,9 +75,10 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
 /* ---- komut kutusu ---- */
 #composer{
   position:sticky;bottom:0;z-index:5;
-  display:flex;align-items:flex-end;gap:8px;
-  padding:12px 24px 16px;
-  background:linear-gradient(to top,var(--desk) 72%,rgba(35,41,47,0));
+  display:flex;align-items:flex-end;gap:12px;
+  padding:16px 24px 20px;
+  background:linear-gradient(to top,var(--desk) 85%,rgba(35,41,47,0));
+  border-top:1px solid var(--edge-soft);
 }
 #mic{
   flex:0 0 auto;width:40px;height:40px;border-radius:8px;
@@ -108,18 +109,28 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
 #sessure{font:12px var(--mono);color:var(--warn);min-width:44px}
 #cmd{
   flex:1;min-width:0;resize:none;max-height:160px;
-  padding:10px 12px;border-radius:8px;
-  border:1px solid var(--edge);background:var(--panel);color:var(--text);
-  font:inherit;line-height:1.4;
+  padding:12px 14px;border-radius:8px;
+  border:1.5px solid var(--edge);background:var(--panel);color:var(--text);
+  font:inherit;line-height:1.5;
+  transition:all .2s ease;
 }
-#cmd::placeholder{color:#6d7983}
+#cmd:focus{
+  border-color:var(--accent);box-shadow:0 0 0 2px rgba(143,176,216,.1);
+  background:var(--desk);
+}
+#cmd::placeholder{color:#6d7983;}
 #send{
   flex:0 0 auto;height:40px;padding:0 18px;border-radius:8px;
   background:var(--accent);color:#12171c;font-weight:600;
+  transition:all .2s ease;box-shadow:0 2px 8px rgba(143,176,216,.3);
+}
+#send:hover:not(:disabled){
+  transform:translateY(-2px);box-shadow:0 4px 16px rgba(143,176,216,.5);
 }
 #send:disabled{opacity:.45;cursor:default}
 #hint{
-  padding:0 24px 12px;color:var(--dim);font-size:12.5px;min-height:18px;
+  padding:8px 24px 12px;color:var(--accent);font-size:12.5px;min-height:18px;
+  transition:color .3s ease;font-weight:500;
 }
 
 /* ---- degisiklik listesi ---- */
@@ -137,9 +148,13 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
 #log{overflow:auto;padding:8px 10px 24px;flex:1}
 #empty{color:var(--dim);padding:18px 8px;font-size:13px}
 
-.item{display:grid;grid-template-columns:34px 1fr 24px;gap:10px;padding:8px 6px}
-.del{width:24px;height:24px;border-radius:6px;color:#5f6b75;line-height:1}
-.del:hover{color:var(--text);background:#252c33}
+.item{
+  display:grid;grid-template-columns:34px 1fr 24px;gap:10px;padding:8px 6px;
+  border-radius:6px;transition:background .2s ease;
+}
+.item:hover{background:rgba(143,176,216,.05)}
+.del{width:24px;height:24px;border-radius:6px;color:#5f6b75;line-height:1;transition:all .2s ease}
+.del:hover{color:#e0605a;background:#3a2320;cursor:pointer}
 .item + .item{border-top:1px solid var(--edge-soft)}
 .ico{
   width:34px;height:34px;border-radius:8px;
@@ -169,14 +184,18 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
 /* ---- session modal ---- */
 .modal{
   position:fixed;left:0;top:0;right:0;bottom:0;
-  background:rgba(0,0,0,.5);z-index:100;
+  background:rgba(0,0,0,.6);z-index:100;
   display:flex;align-items:flex-start;justify-content:center;
   padding-top:40px;overflow-y:auto;
+  animation:fadeIn .2s ease;backdrop-filter:blur(2px);
 }
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
 .modal-content{
   background:var(--panel);border:1px solid var(--edge);border-radius:12px;
   width:90%;max-width:700px;box-shadow:0 24px 48px rgba(0,0,0,.8);
+  animation:slideUp .3s ease;
 }
+@keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
 .modal-header{
   display:flex;align-items:center;gap:8px;
   padding:16px 20px;border-bottom:1px solid var(--edge-soft);
@@ -297,25 +316,25 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
 <div id="app">
 
   <header id="bar">
-    <div class="brand">CV Studio</div>
+    <div class="brand">🎨 CV Studio</div>
     <label class="upload" id="uploadLabel" for="upload">
-      PDF/DOCX yükle
+      📄 PDF/DOCX yükle
       <div class="upload-progress" id="uploadProgress"></div>
       <div class="upload-status" id="uploadStatus"></div>
     </label>
     <input id="upload" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
     <div class="upload-error" id="uploadError"></div>
-    <button class="tool" id="sessionBtn" title="Oturumları yönet">Oturumlar</button>
-    <div id="who">yükleniyor</div>
+    <button class="tool" id="sessionBtn" title="Oturumları yönet">📋 Oturumlar</button>
+    <div id="who" title="Aktif oturum ve dosya bilgisi">yükleniyor</div>
     <div class="grow"></div>
     <div class="tools">
-      <button class="tool" data-z="0.5">%50</button>
-      <button class="tool" data-z="0.75">%75</button>
-      <button class="tool" data-z="1">%100</button>
-      <button class="tool" data-z="fit">Sığdır</button>
+      <button class="tool" data-z="0.5" title="Küçükten görüntüle">%50</button>
+      <button class="tool" data-z="0.75" title="Orta boyut">%75</button>
+      <button class="tool" data-z="1" title="Normal boyut">%100</button>
+      <button class="tool" data-z="fit" title="Pencereye sığdır">🔍 Sığdır</button>
       <div class="sep"></div>
-      <button class="tool" id="undo" disabled>Geri al</button>
-      <button class="tool" id="dreset">Tasarımı sıfırla</button>
+      <button class="tool" id="undo" disabled title="Son değişikliği geri al">↶ Geri al</button>
+      <button class="tool" id="dreset" title="Tasarımı başlangıç haline döndür">⟲ Sıfırla</button>
     </div>
   </header>
 
@@ -333,40 +352,44 @@ main{display:grid;grid-template-columns:1fr 360px;min-height:0}
           </svg>
           <span class="dot"></span>
         </button>
-        <textarea id="cmd" rows="1" placeholder="Ne değiştirelim? Örnek: başlıkları lacivert yap"></textarea>
-        <button id="send">Gönder</button>
+        <textarea id="cmd" rows="1" placeholder="✨ Ne değiştirelim? Örnek: başlıkları lacivert yap, metni büyült veya resim ekle"></textarea>
+        <button id="send">📤 Gönder</button>
       </div>
-      <div id="sesbar">
-        <span>ses</span>
-        <select id="sesbaglam" title="Konu profili">
-          <option value="cv">cv</option>
-          <option value="yazilim">yazilim</option>
-          <option value="karisik">karisik</option>
-          <option value="osmanlica">osmanlica</option>
-          <option value="genel">genel</option>
+      <div id="sesbar" style="gap:12px;line-height:1.6;padding:8px 24px;">
+        <span style="font-weight:600;color:var(--accent);">🎤 Sesli Komut</span>
+
+        <select id="sesbaglam" title="Konu profili" style="padding:4px 8px;font-size:12px;">
+          <option value="cv">CV Konusu</option>
+          <option value="yazilim">Yazılım</option>
+          <option value="karisik">Karışık</option>
+          <option value="osmanlica">Osmanlıca</option>
+          <option value="genel">Genel</option>
         </select>
-        <select id="sesdil" title="Dil">
-          <option value="tr">tr</option>
-          <option value="en">en</option>
-          <option value="oto">oto</option>
+
+        <select id="sesdil" title="Dil" style="padding:4px 8px;font-size:12px;">
+          <option value="tr">🇹🇷 Türkçe</option>
+          <option value="en">🇬🇧 English</option>
+          <option value="oto">Otomatik</option>
         </select>
-        <select id="sesmodel" title="Model">
-          <option value="large-v3-turbo">turbo</option>
-          <option value="large-v3">large-v3</option>
+
+        <select id="sesmodel" title="Model" style="padding:4px 8px;font-size:12px;">
+          <option value="large-v3-turbo">⚡ Turbo (Hızlı)</option>
+          <option value="large-v3">🎯 Large v3 (Doğru)</option>
         </select>
-        <span id="sessure"></span>
+
+        <span id="sessure" style="min-width:60px;text-align:center;color:var(--warn);font-weight:600;"></span>
         <span class="grow"></span>
-        <span id="sesbilgi"></span>
+        <span id="sesbilgi" style="color:var(--ok);font-size:11px;"></span>
       </div>
       <div id="hint"></div>
     </section>
 
     <aside id="right">
-      <div class="rhead"><b>Değişiklikler</b><span id="depth"></span>
+      <div class="rhead"><b>📝 Değişiklik Geçmişi</b><span id="depth" style="color:var(--ok);font-weight:600;margin-left:8px;"></span>
         <div class="grow"></div>
-        <button class="tool" id="clear" title="Sadece bu listeyi siler, CV'yi değiştirmez">Temizle</button>
+        <button class="tool" id="clear" title="Sadece bu listeyi siler, CV'yi değiştirmez">🗑 Temizle</button>
       </div>
-      <div id="log"><div id="empty">Henüz değişiklik yok. Aşağıya bir komut yaz.</div></div>
+      <div id="log"><div id="empty">💡 Henüz değişiklik yok. Aşağıya bir komut yaz.</div></div>
     </aside>
   </main>
 
@@ -1468,6 +1491,20 @@ function run(said, fn){
 }
 
 /* ---------- girisler ---------- */
+const SUGGESTIONS = [
+  "başlıkları lacivert yap",
+  "metin boyutunu büyült",
+  "metinler arasına boşluk ekle",
+  "resim ekle",
+  "yeni alan ekle",
+  "renkleri değiştir",
+  "yazı tipini değiştir",
+];
+
+function getSuggestion() {
+  return SUGGESTIONS[Math.floor(Math.random() * SUGGESTIONS.length)];
+}
+
 function submit(){
   const t = cmd.value.trim();
   if (!t) return;
@@ -1475,9 +1512,15 @@ function submit(){
   cmd.style.height = "auto";
   run(t, () => jpost("/command", {text: t, id: aktifOturum}));
 }
+
 send.addEventListener("click", submit);
 cmd.addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
+  if (e.key === "ArrowUp" && cmd.value === "") {
+    e.preventDefault();
+    cmd.value = getSuggestion();
+    cmd.setSelectionRange(0, cmd.value.length);
+  }
 });
 cmd.addEventListener("input", () => {
   cmd.style.height = "auto";
