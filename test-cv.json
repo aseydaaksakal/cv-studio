@@ -1,0 +1,51 @@
+{
+  "basics": {
+    "name": "Abdullah Seyda Aksakal",
+    "label": "Fractional CTO & Principal Architect",
+    "location": "Istanbul, Turkey",
+    "email": "aseydaaksakal@gmail.com",
+    "phone": "+90 535 660 41 03",
+    "url": "",
+    "summary": "Fractional CTO with 15+ years experience. Specialist in engineering leadership, distributed systems architecture, generative AI, and DevSecOps."
+  },
+  "work": [
+    {
+      "name": "Independent Tech Consulting",
+      "position": "Fractional CTO & Principal Architect",
+      "startDate": "2010-01",
+      "endDate": "2025-01",
+      "summary": "End-to-end strategic management, organizational scaling, and technical mentorship of 100+ multidisciplinary engineering teams.",
+      "highlights": [
+        "Engineering Leadership: Strategic management and technical mentorship of 100+ engineering teams",
+        "Full-Stack & Cross-Platform Engineering: Architecting high-performance web, mobile, and desktop applications",
+        "Distributed Systems Architecture: Designing low-latency, high-throughput cloud-native architectures",
+        "Deep Tech & AI: Developing autonomous AI systems, enterprise RAG, and LLM fine-tuning",
+        "DevSecOps: Implementing Zero-Trust security and automated code scanning"
+      ]
+    }
+  ],
+  "skills": [
+    {
+      "name": "Core Technologies",
+      "keywords": ["Python", "Rust", "Go", "C++", "TypeScript", "Java", "C#"]
+    },
+    {
+      "name": "Cloud & Infrastructure",
+      "keywords": ["AWS", "GCP", "Kubernetes", "Docker", "DevSecOps"]
+    }
+  ],
+  "education": [
+    {
+      "institution": "Istanbul Şehir University",
+      "studyType": "Associate Degree",
+      "area": "Computer Programming",
+      "endDate": "2018-06"
+    }
+  ],
+  "languages": [
+    {
+      "language": "English",
+      "fluency": "Full Professional Proficiency"
+    }
+  ]
+}
