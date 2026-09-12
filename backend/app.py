@@ -249,10 +249,12 @@ async def upload(dosya: UploadFile = File(...), ad: str = Form("")):
     import sys
 
     def arka_plan_isle():
+        import sys
+        print(f"[UPLOAD-START] Thread başladı! Session: {yeni_id}", file=sys.stderr, flush=True)
         try:
-            print(f"[UPLOAD] Arka plan: PDF işleniyor: {hedef}", file=sys.stderr)
+            print(f"[UPLOAD] Arka plan: PDF işleniyor: {hedef}", file=sys.stderr, flush=True)
             result = pipeline.calistir(hedef, ad=ad.strip(), kopyala=False)
-            print(f"[UPLOAD] Sonuç: {result}", file=sys.stderr)
+            print(f"[UPLOAD] Sonuç: {result}", file=sys.stderr, flush=True)
 
             # İşlem bitti - session'ı güncelle
             session.sec(yeni_id)
@@ -260,31 +262,31 @@ async def upload(dosya: UploadFile = File(...), ad: str = Form("")):
             # CV'yi load et (disk'ten oku)
             try:
                 cv_data = commands.load()
-                print(f"[UPLOAD] CV yüklendi: {len(cv_data.get('work', []))} deneyim", file=sys.stderr)
+                print(f"[UPLOAD] CV yüklendi: {len(cv_data.get('work', []))} deneyim", file=sys.stderr, flush=True)
             except Exception as e:
-                print(f"[UPLOAD] CV load hatası: {e}", file=sys.stderr)
+                print(f"[UPLOAD] CV load hatası: {e}", file=sys.stderr, flush=True)
 
             # HTML preview'ı render et
             try:
                 import traceback
-                print(f"[UPLOAD] Render çağrılıyor...", file=sys.stderr)
+                print(f"[UPLOAD] Render çağrılıyor...", file=sys.stderr, flush=True)
                 result = render_cv.render()
-                print(f"[UPLOAD] HTML render edildi: {result}", file=sys.stderr)
+                print(f"[UPLOAD] HTML render edildi: {result}", file=sys.stderr, flush=True)
 
                 # Dosya varsa kontrol et
                 if render_cv.HTML_OUT.exists():
                     size = render_cv.HTML_OUT.stat().st_size
-                    print(f"[UPLOAD] Preview dosyası oluşturuldu: {size} bytes", file=sys.stderr)
+                    print(f"[UPLOAD] Preview dosyası oluşturuldu: {size} bytes", file=sys.stderr, flush=True)
                 else:
-                    print(f"[UPLOAD] UYARI: Preview dosyası oluşturulmadı: {render_cv.HTML_OUT}", file=sys.stderr)
+                    print(f"[UPLOAD] UYARI: Preview dosyası oluşturulmadı: {render_cv.HTML_OUT}", file=sys.stderr, flush=True)
 
             except Exception as e:
                 import traceback
-                print(f"[UPLOAD] Render hatası: {e}", file=sys.stderr)
+                print(f"[UPLOAD] Render hatası: {e}", file=sys.stderr, flush=True)
                 traceback.print_exc(file=sys.stderr)
 
         except Exception as e:
-            print(f"[UPLOAD] Arka plan hatası: {e}", file=sys.stderr)
+            print(f"[UPLOAD] Arka plan hatası: {e}", file=sys.stderr, flush=True)
 
     thread = threading.Thread(target=arka_plan_isle, daemon=True)
     thread.start()
