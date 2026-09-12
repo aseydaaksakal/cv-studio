@@ -49,9 +49,13 @@ ACCESS_PASSWORD = os.environ.get("CV_STUDIO_ACCESS_PASSWORD", "")
 CORS_ORIGINS = [o.strip() for o in os.environ.get("CV_STUDIO_CORS", "").split(",") if o.strip()]
 
 app = FastAPI(title="CV Studio")
-if CORS_ORIGINS:
-    app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS,
-                       allow_methods=["*"], allow_headers=["*"])
+# CORS: local development ve file:// erişimi için hepsine izin ver
+cors_origins = CORS_ORIGINS if CORS_ORIGINS else ["*"]
+app.add_middleware(CORSMiddleware,
+                   allow_origins=cors_origins,
+                   allow_methods=["*"],
+                   allow_headers=["*"],
+                   allow_credentials=True)
 app.include_router(voice_router)
 
 
