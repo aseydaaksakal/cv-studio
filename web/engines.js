@@ -106,7 +106,10 @@ export async function localChat(model, onProgress = () => {}) {
     console.log = console.warn = console.info = () => {}; // Suppress all WebLLM debug output
     try {
       const created = await webllm.CreateMLCEngine(model, {
-        initProgressCallback: (p) => onProgress(p.text || "Loading…", Math.round((p.progress || 0) * 100)),
+        initProgressCallback: (p) => {
+          // Only show progress percentage, skip verbose "Fetching param cache" messages
+          if (p.progress !== undefined) onProgress(`Downloading ${Math.round((p.progress || 0) * 100)}%`, Math.round((p.progress || 0) * 100));
+        },
       });
       engine = created; engineModel = model;
     } finally { console.log = oldLog; console.warn = oldWarn; console.info = oldInfo; }
