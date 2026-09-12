@@ -137,6 +137,33 @@ These rules apply to ALL Claude Code sessions on this project (desktop, cloud, r
 
 **Automate:** Every feature end → New tab → Same conversation → Continue
 
+### 7. Auto-Resume from Memory 🧠
+
+**Rule:** Every new Claude Code session automatically resumes from .progress/ and .claude/memory/
+
+**Automatic at session start:**
+- ✅ Load `.progress/COMPLETED.md` → current progress
+- ✅ Load `.progress/ROADMAP.md` → next feature
+- ✅ Load `.claude/memory/` → project context
+- ✅ Compile summary: "Here's what's done, here's what's next"
+
+**Without user doing anything:**
+- New session opens
+- I read these files automatically
+- I brief you: Feature #X complete, v0.2.0 status, next steps
+- You just say "continue" or next task
+
+**Why:**
+- Zero context loss between sessions
+- No "what was I doing?" confusion
+- Automatic momentum (start → work immediately)
+- Memory persists across all sessions
+
+**Implementation:**
+- `.claude/settings.json`: memory auto-load enabled
+- `.progress/COMPLETED.md`: updated after each feature
+- `.claude/memory/`: project context stored
+
 ---
 
 ## Override Detection

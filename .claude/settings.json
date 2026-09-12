@@ -10,12 +10,7 @@
       "Grep",
       "WebFetch",
       "Agent",
-      "Artifact",
-      "Edit(.claude)",
-      "Write(.claude)",
-      "Edit(CLAUDE.md)",
-      "Edit(*.md)",
-      "Write(*.md)"
+      "Artifact"
     ],
     "defaultMode": "bypassPermissions"
   }
