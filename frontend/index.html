@@ -1356,16 +1356,25 @@ async function yukleDosya(file){
                 const totalItems = state.sections.reduce((sum, s) => sum + (s.items || 0), 0);
 
                 if (totalItems > 0) {
-                  // İşlem bitti, sayfayı yenile
-                  clearInterval(kontrol_timer);
-                  await refreshSheet();
-                  await loadState();
-                  hint.textContent = file.name + " işlendi: " + state.sections.length + " bölüm";
+                  // HTML render'ın bitip bitmediğini kontrol et
+                  try {
+                    const previewResponse = await fetch(`http://localhost:8000/preview?id=${encodeURIComponent(aktifOturum)}`);
+                    if (previewResponse.ok) {
+                      // Render tamamlandı! Sayfayı yenile
+                      clearInterval(kontrol_timer);
+                      await refreshSheet();
+                      await loadState();
+                      hint.textContent = file.name + " işlendi: " + state.sections.length + " bölüm";
 
-                  // UI'yi temizle
-                  await new Promise(r => setTimeout(r, 500));
-                  if (progressSafe.style) progressSafe.style.width = "0";
-                  if (statusSafe) statusSafe.textContent = "";
+                      // UI'yi temizle
+                      await new Promise(r => setTimeout(r, 500));
+                      if (progressSafe.style) progressSafe.style.width = "0";
+                      if (statusSafe) statusSafe.textContent = "";
+                    }
+                    // Render henüz bitmedi, devam et polling'e
+                  } catch (e) {
+                    // Preview load başarısız, devam et polling'e
+                  }
                 }
               }
             } catch (e) {
