@@ -31,13 +31,11 @@ export async function availableLocalModels() {
         const id = m.model_id;
         const mb = m.vram_required_MB || 0;
         const gb = mb / 1024;
-        // Keep ONLY top 3 models: keep if in this list AND right VRAM variant
-        const keep = (
-          (id.includes("Qwen2.5-7B") && id.includes("q4f16_1") && gb <= 5.0) ||
-          (id.includes("Qwen2.5-3B") && id.includes("q4f16_1") && gb <= 2.4) ||
-          (id.includes("Llama-3.2-3B") && id.includes("q4f16_1") && gb <= 2.2)
-        );
-        return keep;
+        // Keep only top 3 proven models for CV editing
+        if (id.includes("Qwen2.5-7B") && gb <= 5.0) return true;
+        if (id.includes("Qwen2.5-3B") && gb <= 2.8) return true;
+        if (id.includes("Llama-3.2-3B") && gb <= 2.9) return true;
+        return false;
       })
       .map((m) => ({ id: m.model_id, mb: m.vram_required_MB || 0 }))
       .sort((a, b) => a.mb - b.mb);
