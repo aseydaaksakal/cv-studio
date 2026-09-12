@@ -227,9 +227,10 @@ def oturum_liste(page: int = 1, limit: int = 50, sort: str = "-guncelleme",
     reverse = sort.startswith("-")
     sort_field = sort.lstrip("+-") or "guncelleme"
     try:
-        oturumlar = sorted(oturumlar,
-                          key=lambda o: o.get(sort_field, 0) or 0,
-                          reverse=reverse)
+        oturumlar = sorted(
+            oturumlar,
+            key=lambda o: o.get(sort_field, 0) or 0,
+            reverse=reverse)
     except (KeyError, TypeError):
         pass
 
@@ -266,7 +267,7 @@ def oturum_sec(istek: OturumSec):
 def oturum_sil(istek: OturumSec):
     try:
         silindi = session.sil(istek.id)
-    except ValueError as e:
+    except ValueError:
         silindi = False
     if silindi:
         session.hazirla()
@@ -369,8 +370,9 @@ def oturum_export(istek: dict):
                         arcname = f"{oid}/{dosya.relative_to(oturum_yol)}"
                         zf.write(dosya, arcname)
 
-        return FileResponse(zip_path, media_type="application/zip",
-                          filename="cv-studio-export.zip", headers=NO_CACHE)
+        return FileResponse(
+            zip_path, media_type="application/zip",
+            filename="cv-studio-export.zip", headers=NO_CACHE)
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -465,8 +467,8 @@ def command(cmd: Command, id: str = ""):
         "ok": True,
         "applied": bool(sonuc["applied"] or tasarim_uygulanan),
         "message": mesaj,
-        "eylem": adimlar[0].get("eylem", "belirsiz") if n == 1
-                 else "{} adim".format(n),
+        "eylem": (adimlar[0].get("eylem", "belirsiz") if n == 1
+                  else "{} adim".format(n)),
         "adimlar": [a.get("eylem", "belirsiz") for a in adimlar],
         "sonuclar": sonuc["sonuclar"],
         "guven": round(min(guvenler), 2) if guvenler else 0.0,
