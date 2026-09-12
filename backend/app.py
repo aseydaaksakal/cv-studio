@@ -186,123 +186,80 @@ def state(id: str = ""):
 @app.post("/upload")
 async def upload(dosya: UploadFile = File(...), ad: str = Form("")):
     """PDF/DOCX'i boyut kontrollu kaydeder, yeni bir oturumda işler - hemen döner, arka planda işler."""
-    ad_dosya = dosya.filename or ""
-    uz = Path(ad_dosya).suffix.lower()
-    if uz not in pipeline.desteklenen():
-        return {"ok": False, "error": "Desteklenmeyen dosya turu: {}. Kabul edilen: {}"
-                .format(uz or "(uzantisiz)", ", ".join(pipeline.desteklenen()))}
-    icerik = await dosya.read()
-    if not icerik:
-        return {"ok": False, "error": "Dosya bos."}
-    if len(icerik) > pipeline.MAX_MB * 1024 * 1024:
-        return {"ok": False, "error": "Dosya boyutu {} MB sinirini asiyor."
-                .format(pipeline.MAX_MB)}
-
-    # 1. Hemen yeni oturum oluştur
-    yeni_id = session.yeni(ad=ad.strip(), kaynak="upload")
-    session.sec(yeni_id)
-
-    # 2. Dosyayı kaydet
-    hedef = pipeline.benzersiz(ad_dosya)
-    hedef.parent.mkdir(parents=True, exist_ok=True)
-    hedef.write_bytes(icerik)
-
-    # 3. Hemen temel CV yapısı ile cevap dön
-    temel_cv = {
-        "basics": {
-            "name": ad.strip() or ad_dosya.split('.')[0],
-            "label": "",
-            "image": "",
-            "email": "",
-            "phone": "",
-            "url": "",
-            "summary": "",
-            "location": {"address": "", "postalCode": "", "city": "", "countryCode": "", "region": ""},
-            "profiles": []
-        },
-        "work": [],
-        "volunteer": [],
-        "education": [],
-        "awards": [],
-        "certificates": [],
-        "publications": [],
-        "skills": [],
-        "languages": [],
-        "interests": [],
-        "references": [],
-        "projects": []
-    }
-
-    # Stub preview HTML oluştur (boş ama /preview 404 vermeyecek)
     try:
+        print(f"[UPLOAD] Başlangıç - dosya: {dosya.filename}", file=sys.stderr, flush=True)
+        ad_dosya = dosya.filename or ""
+        uz = Path(ad_dosya).suffix.lower()
+        if uz not in pipeline.desteklenen():
+            return {"ok": False, "error": "Desteklenmeyen dosya turu: {}. Kabul edilen: {}"
+                    .format(uz or "(uzantisiz)", ", ".join(pipeline.desteklenen()))}
+
+        icerik = await dosya.read()
+        if not icerik:
+            return {"ok": False, "error": "Dosya bos."}
+        if len(icerik) > pipeline.MAX_MB * 1024 * 1024:
+            return {"ok": False, "error": "Dosya boyutu {} MB sinirini asiyor."
+                    .format(pipeline.MAX_MB)}
+
+        # 1. Hemen yeni oturum oluştur
+        yeni_id = session.yeni(ad=ad.strip(), kaynak="upload")
+        session.sec(yeni_id)
+
+        # 2. Dosyayı kaydet
+        hedef = pipeline.benzersiz(ad_dosya)
+        hedef.parent.mkdir(parents=True, exist_ok=True)
+        hedef.write_bytes(icerik)
+
+        # Stub preview HTML oluştur (boş ama /preview 404 vermeyecek)
         render_cv.HTML_OUT.parent.mkdir(parents=True, exist_ok=True)
         render_cv.HTML_OUT.write_text(
             "<html><body><p>Yükleniyor...</p></body></html>",
             encoding="utf-8"
         )
         print(f"[UPLOAD] Stub preview oluşturuldu", file=sys.stderr, flush=True)
+
+        # 3. Hemen temel yapıyı döndür
+        yanit = {
+            "ok": True,
+            "id": yeni_id,
+            "bolum": 0,
+            "kapsama": 0.0,
+            "dosya": ad_dosya,
+            "durum": "yükleniyor...",
+            "islemeniyor": True
+        }
+
+        # 4. Arka planda işlemeyi başlat
+        def arka_plan_isle():
+            print(f"[UPLOAD-START] Thread başladı! Session: {yeni_id}", file=sys.stderr, flush=True)
+            try:
+                result = pipeline.calistir(hedef, ad=ad.strip(), kopyala=False)
+                session.sec(yeni_id)
+
+                try:
+                    cv_data = commands.load()
+                except Exception as e:
+                    print(f"[UPLOAD] CV load hatası: {e}", file=sys.stderr, flush=True)
+
+                try:
+                    render_cv.render()
+                    if render_cv.HTML_OUT.exists():
+                        print(f"[UPLOAD] Preview oluşturuldu", file=sys.stderr, flush=True)
+                except Exception as e:
+                    print(f"[UPLOAD] Render hatası: {e}", file=sys.stderr, flush=True)
+
+            except Exception as e:
+                print(f"[UPLOAD] Arka plan hatası: {e}", file=sys.stderr, flush=True)
+
+        thread = threading.Thread(target=arka_plan_isle, daemon=True)
+        thread.start()
+        return yanit
+
     except Exception as e:
-        print(f"[UPLOAD] Stub preview hatası: {e}", file=sys.stderr, flush=True)
-
-    # Hemen temel yapıyı döndür
-    yanit = {
-        "ok": True,
-        "id": yeni_id,
-        "bolum": 0,
-        "kapsama": 0.0,
-        "dosya": ad_dosya,
-        "durum": "yükleniyor...",
-        "islemeniyor": True  # Arka planda işleniyor işareti
-    }
-
-    # 4. Arka planda işlemeyi başlat (blocking yapmadan)
-    import threading
-    import sys
-
-    def arka_plan_isle():
-        import sys
-        print(f"[UPLOAD-START] Thread başladı! Session: {yeni_id}", file=sys.stderr, flush=True)
-        try:
-            print(f"[UPLOAD] Arka plan: PDF işleniyor: {hedef}", file=sys.stderr, flush=True)
-            result = pipeline.calistir(hedef, ad=ad.strip(), kopyala=False)
-            print(f"[UPLOAD] Sonuç: {result}", file=sys.stderr, flush=True)
-
-            # İşlem bitti - session'ı güncelle
-            session.sec(yeni_id)
-
-            # CV'yi load et (disk'ten oku)
-            try:
-                cv_data = commands.load()
-                print(f"[UPLOAD] CV yüklendi: {len(cv_data.get('work', []))} deneyim", file=sys.stderr, flush=True)
-            except Exception as e:
-                print(f"[UPLOAD] CV load hatası: {e}", file=sys.stderr, flush=True)
-
-            # HTML preview'ı render et
-            try:
-                import traceback
-                print(f"[UPLOAD] Render çağrılıyor...", file=sys.stderr, flush=True)
-                result = render_cv.render()
-                print(f"[UPLOAD] HTML render edildi: {result}", file=sys.stderr, flush=True)
-
-                # Dosya varsa kontrol et
-                if render_cv.HTML_OUT.exists():
-                    size = render_cv.HTML_OUT.stat().st_size
-                    print(f"[UPLOAD] Preview dosyası oluşturuldu: {size} bytes", file=sys.stderr, flush=True)
-                else:
-                    print(f"[UPLOAD] UYARI: Preview dosyası oluşturulmadı: {render_cv.HTML_OUT}", file=sys.stderr, flush=True)
-
-            except Exception as e:
-                import traceback
-                print(f"[UPLOAD] Render hatası: {e}", file=sys.stderr, flush=True)
-                traceback.print_exc(file=sys.stderr)
-
-        except Exception as e:
-            print(f"[UPLOAD] Arka plan hatası: {e}", file=sys.stderr, flush=True)
-
-    thread = threading.Thread(target=arka_plan_isle, daemon=True)
-    thread.start()
-
-    return yanit
+        import traceback
+        print(f"[UPLOAD] KRITIK HATA: {e}", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
+        return {"ok": False, "error": str(e)}
 
 
 @app.get("/oturum")
