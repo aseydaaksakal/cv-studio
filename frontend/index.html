@@ -637,7 +637,11 @@ async function jpost(url, body){
 }
 async function refreshSheet(){
   if (!aktifOturum) return;
-  await fetch("http://localhost:8000/render?id=" + encodeURIComponent(aktifOturum));
+  try {
+    await fetch("http://localhost:8000/render?id=" + encodeURIComponent(aktifOturum));
+  } catch(e) {}
+  // Delay biraz daha bekle - PNG oluşturulması için
+  await new Promise(r => setTimeout(r, 1000));
   sheet.src = "/preview?id=" + encodeURIComponent(aktifOturum) + "&t=" + Date.now();
 }
 async function loadState(){
