@@ -640,8 +640,8 @@ async function refreshSheet(){
   try {
     await fetch("http://localhost:8000/render?id=" + encodeURIComponent(aktifOturum));
   } catch(e) {}
-  // Delay biraz daha bekle - PNG oluşturulması için
-  await new Promise(r => setTimeout(r, 1000));
+  // PNG oluşturulması için daha uzun bekle (5 saniye)
+  await new Promise(r => setTimeout(r, 5000));
   sheet.src = "/preview?id=" + encodeURIComponent(aktifOturum) + "&t=" + Date.now();
 }
 async function loadState(){
