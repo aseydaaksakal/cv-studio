@@ -637,12 +637,12 @@ async function jpost(url, body){
 }
 async function refreshSheet(){
   if (!aktifOturum) return;
-  await fetch("/render?id=" + encodeURIComponent(aktifOturum));
+  await fetch("http://localhost:8000/render?id=" + encodeURIComponent(aktifOturum));
   sheet.src = "/preview?id=" + encodeURIComponent(aktifOturum) + "&t=" + Date.now();
 }
 async function loadState(){
   try{
-    const s = await (await fetch("/state?id=" + encodeURIComponent(aktifOturum))).json();
+    const s = await (await fetch("http://localhost:8000/state?id=" + encodeURIComponent(aktifOturum))).json();
     if (!s.ok) { $("#who").textContent = s.error || "durum okunamadı"; return; }
     $("#who").textContent = [s.name, s.title].filter(Boolean).join(", ");
     const n = s.sections.reduce((a, x) => a + x.items, 0);
@@ -653,7 +653,7 @@ async function loadState(){
 }
 
 async function loadOturumlar(){
-  const d = await (await fetch("/oturum")).json();
+  const d = await (await fetch("http://localhost:8000/oturum")).json();
   aktifOturum = d.aktif || "";
   oturumlar = d.oturumlar || [];
   renderSessionList(oturumlar);
@@ -1235,7 +1235,7 @@ async function batchExportSessions(){
   hint.textContent = `${count} oturum indiriliyor...`;
 
   try {
-    const response = await fetch("/oturum/export", {
+    const response = await fetch("http://localhost:8000/oturum/export", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({ids})
@@ -1362,7 +1362,7 @@ async function yukleDosya(file){
       resolve();
     });
 
-    xhr.open("POST", "/upload");
+    xhr.open("POST", "http://localhost:8000/upload");
     xhr.send(formData);
   });
 }
@@ -1549,7 +1549,7 @@ async function isit(){
   try{
     const f = new FormData();
     f.append("model", $("#sesmodel").value);
-    const r = await (await fetch("/voice/warmup", {method:"POST", body:f})).json();
+    const r = await (await fetch("http://localhost:8000/voice/warmup", {method:"POST", body:f})).json();
     sesBilgi.textContent = "model hazır (" + r.sure + " sn)";
     micDurum("hazir", "Sesli komut: başlat");
   }catch(e){ sesBilgi.textContent = "ses sunucusu yok"; }
@@ -1602,7 +1602,7 @@ async function sesGonder(){
 
   mic.disabled = true;
   try{
-    const c = await fetch("/voice", {method:"POST", body:veri});
+    const c = await fetch("http://localhost:8000/voice", {method:"POST", body:veri});
     if (!c.ok){
       hint.textContent = "Ses çözülemedi (HTTP " + c.status + ").";
       sesBilgi.textContent = "";
