@@ -153,30 +153,33 @@ def do_render(id: str = ""):
 
 @app.get("/preview")
 def preview(id: str = ""):
-    """CV preview - PNG varsa HTML'de göster! Yoksa bekle."""
+    """CV preview - PNG varsa HTML'de göster!"""
     if not _hazirla(id):
         return HTMLResponse("<html><body><p>Onizleme yok.</p></body></html>",
                             status_code=200, headers=NO_CACHE)
 
-    # PNG oluşturulmasını bekle (max 30 saniye)
+    # PNG oluşturulmasını bekle (max 30 saniye) - sadece id varsa
     png_path = Path(__file__).parent.parent / "output" / "oturum" / id / "cv_page1.png"
-    for attempt in range(30):  # 30 saniye bekle
-        if png_path.exists():
-            print(f"[PREVIEW] PNG found at attempt {attempt+1}: {png_path}", file=sys.stderr, flush=True)
-            return HTMLResponse(
-                f"""<html>
-                <head><style>body {{ margin: 0; padding: 0; background: #fff; }} img {{ max-width: 100%; height: auto; display: block; }}</style></head>
-                <body><img src="http://localhost:8000/preview_image?id={id}" alt="CV Preview" onload="console.log('Image loaded')" onerror="console.log('Image failed')"></body>
-                </html>""",
-                status_code=200, headers=NO_CACHE)
-        if attempt < 29:  # Don't sleep on last attempt
-            import time
-            time.sleep(1)
+    if id:  # Only wait if id is provided (not initial page load)
+        for attempt in range(30):  # 30 saniye bekle
+            if png_path.exists():
+                print(f"[PREVIEW] PNG found at attempt {attempt+1}: {png_path}", file=sys.stderr, flush=True)
+                return HTMLResponse(
+                    f"""<html>
+                    <head><style>body {{ margin: 0; padding: 0; background: #fff; }} img {{ max-width: 100%; height: auto; display: block; }}</style></head>
+                    <body><img src="http://localhost:8000/preview_image?id={id}" alt="CV Preview" onload="console.log('Image loaded')" onerror="console.log('Image failed')"></body>
+                    </html>""",
+                    status_code=200, headers=NO_CACHE)
+            if attempt < 29:  # Don't sleep on last attempt
+                import time
+                time.sleep(1)
 
-    # 30 saniye sonra hala yoksa stub göster
-    print(f"[PREVIEW] PNG not created after 30s for {id}", file=sys.stderr, flush=True)
+        # 30 saniye sonra hala yoksa stub göster
+        print(f"[PREVIEW] PNG not created after 30s for {id}", file=sys.stderr, flush=True)
+
+    # Stub göster (initial load veya timeout sonrası)
     return HTMLResponse(
-        "<html><body style='margin:0;'><p style='padding:20px;'>Yükleniyor... (İşlem uzun sürüyor)</p></body></html>",
+        "<html><body style='margin:0;'><p style='padding:20px;'>Yükleniyor...</p></body></html>",
         status_code=200, headers=NO_CACHE)
 
 
