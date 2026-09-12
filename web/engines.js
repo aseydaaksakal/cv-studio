@@ -149,13 +149,11 @@ export async function localTranscriber(model, onProgress = () => {}) {
       tf = await import(TRANSFORMERS_URL);
       const { pipeline, env } = tf;
       env.allowLocalModels = false;
-      onProgress("Downloading…", 0);
-      const progress_callback = (p) => { if (p.status === "progress") onProgress(`Downloading ${Math.round((p.progress || 0) * 100)}%`); };
+      const gpu = await webgpuUsable();
+      onProgress(gpu ? "Downloading speech model…" : "Loading speech model on processor (may be slow)…", 0);
+      const progress_callback = (p) => { if (p.status === "progress") onProgress(`${gpu ? "Downloading" : "Loading"} ${Math.round((p.progress || 0) * 100)}%`); };
       const onGPU = { device: "webgpu", dtype: { encoder_model: "fp32", decoder_model_merged: "q4" }, progress_callback };
       const onCPU = { device: "wasm", dtype: "q8", progress_callback };
-      /* Ask for the adapter before choosing, so a machine without one downloads the CPU build only.
-         The backend can still fail after that, so the CPU build stays a fallback as well as an else branch. */
-      const gpu = await webgpuUsable();
       const oldLog = console.log, oldWarn = console.warn, oldInfo = console.info;
       console.log = console.warn = console.info = () => {};
       try {
