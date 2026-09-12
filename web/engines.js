@@ -27,7 +27,7 @@ export async function availableLocalModels() {
   try {
     const webllm = await import(WEBLLM_URL);
     const list = (webllm.prebuiltAppConfig?.model_list || [])
-      .filter((m) => /instruct|chat|it-/i.test(m.model_id) && !/embedding/i.test(m.model_id))
+      .filter((m) => /instruct|chat|it-/i.test(m.model_id) && !/embedding/i.test(m.model_id) && !m.model_id.includes("1.5B"))
       .map((m) => ({ id: m.model_id, mb: m.vram_required_MB || 0 }))
       .sort((a, b) => a.mb - b.mb);
     if (!list.length) return LOCAL_MODELS;
