@@ -1,0 +1,13 @@
+{
+  "name": "cv-studio-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/core.test.mjs",
+    "test:e2e": "playwright test",
+    "serve": "node tests/serve.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0"
+  }
+}
