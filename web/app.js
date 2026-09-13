@@ -1,6 +1,6 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
 import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, applyOps, applyTheme, clearSelectedSessions, copySession, createSession, deleteSession, deleteSessionsBatch, download, extractJSON, exportSessionsAsJSON, getActiveSession, getEffectiveTheme, getSelectedSessions, getSession, getSystemTheme, getTheme, looksDestructive, listSessions, normalize, plainText, renameSessionsBatch, renderATS, renderStyled, setActiveSession, setSelectedSessions, setSessionNotes, setTheme, updateSession, whisperLangName } from "./core.js";
-import { LOCAL_MODELS, LOCAL_WHISPER, UnknownModelError, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localWhisperId, ollamaModels, pickForBudget, probeModel } from "./engines.js";
+import { LOCAL_MODELS, LOCAL_WHISPER, UnknownModelError, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localWhisperId, ollamaModels, pickForBudget, probeModel, webgpuUsable } from "./engines.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
 
@@ -263,9 +263,12 @@ async function startRecording(transcribe) {
 
 async function transcribeLocally(blob) {
   try {
+    const gpu = await webgpuUsable();
+    /* CPU/WASM transcription is slow; give it 3 minutes. GPU gets 60 s which is already generous. */
+    const timeoutMs = gpu ? 60000 : 180000;
     const transcribePromise = localTranscribe(localWhisperId(settings.localwhisper), blob, (msg, pct) => micStatus(pct ? `${msg} ${pct}%` : msg));
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Transcription taking too long — this usually means your GPU wasn't detected. Try the desktop app for faster transcription, or use browser speech recognition in settings.")), 60000)
+      setTimeout(() => reject(new Error("Transcription timed out. Try using browser speech recognition in settings for a faster alternative.")), timeoutMs)
     );
     return await Promise.race([transcribePromise, timeoutPromise]);
   } catch (e) {
@@ -439,6 +442,21 @@ async function loadRealModelList() {
   syncSettingsForm();
 }
 for (const [v, label] of LOCAL_WHISPER) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#localwhisper").appendChild(o); }
+/* Show a warning when large-v3-turbo is selected but GPU is unavailable */
+webgpuUsable().then((gpu) => {
+  const whisperSel = $("#localwhisper");
+  const warnEl = document.createElement("p");
+  warnEl.id = "whisper-gpu-warn";
+  warnEl.className = "small err";
+  warnEl.hidden = true;
+  warnEl.textContent = "No GPU detected — large-v3-turbo will automatically switch to Whisper small at transcription time. Pick Whisper small here to avoid the warning each time.";
+  whisperSel.parentNode.insertBefore(warnEl, whisperSel.nextSibling);
+  const updateWarn = () => {
+    warnEl.hidden = gpu || whisperSel.value !== "onnx-community/whisper-large-v3-turbo";
+  };
+  whisperSel.addEventListener("change", updateWarn);
+  updateWarn();
+});
 function syncSettingsForm() {
   const p = $("#provider").value, e = $("#engine").value;
   $("#localmodel-row").hidden = p !== "local"; $("#apikey-row").hidden = !(p === "anthropic" || p === "openai"); $("#model-row").hidden = !(p === "anthropic" || p === "openai"); $("#baseurl-row").hidden = p !== "openai";

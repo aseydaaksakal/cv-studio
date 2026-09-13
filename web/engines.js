@@ -108,7 +108,7 @@ export async function localChat(model, onProgress = () => {}) {
       const created = await webllm.CreateMLCEngine(model, {
         initProgressCallback: (p) => {
           // Only show progress percentage, skip verbose "Fetching param cache" messages
-          if (p.progress !== undefined) onProgress(`Downloading ${Math.round((p.progress || 0) * 100)}%`);
+          if (p.progress !== undefined) onProgress(`Downloading ${Math.min(100, Math.round(p.progress || 0))}%`);
         },
       });
       engine = created; engineModel = model;
@@ -141,6 +141,12 @@ export async function localComplete(model, system, user, onProgress) {
 let transcriber = null, transcriberModel = null, transcriberLoading = null, tf = null;
 
 export async function localTranscriber(model, onProgress = () => {}) {
+  const gpu = await webgpuUsable();
+  /* large-v3-turbo on CPU/WASM is extremely slow — auto-downgrade to whisper-small */
+  if (!gpu && model === "onnx-community/whisper-large-v3-turbo") {
+    onProgress("No GPU detected — switching to Whisper small for CPU use…", 0);
+    model = LOCAL_WHISPER[1][0];
+  }
   if (transcriber && transcriberModel === model) return transcriber;
   if (transcriberLoading) await transcriberLoading;
   if (transcriber && transcriberModel === model) return transcriber;
@@ -149,9 +155,8 @@ export async function localTranscriber(model, onProgress = () => {}) {
       tf = await import(TRANSFORMERS_URL);
       const { pipeline, env } = tf;
       env.allowLocalModels = false;
-      const gpu = await webgpuUsable();
       onProgress(gpu ? "Downloading speech model…" : "Loading speech model on processor (may be slow)…", 0);
-      const progress_callback = (p) => { if (p.status === "progress") onProgress(`${gpu ? "Downloading" : "Loading"} ${Math.round((p.progress || 0) * 100)}%`); };
+      const progress_callback = (p) => { if (p.status === "progress") onProgress(`${gpu ? "Downloading" : "Loading"} ${Math.min(100, Math.round(p.progress || 0))}%`); };
       const onGPU = { device: "webgpu", dtype: { encoder_model: "fp32", decoder_model_merged: "q4" }, progress_callback };
       const onCPU = { device: "wasm", dtype: "q8", progress_callback };
       const oldLog = console.log, oldWarn = console.warn, oldInfo = console.info;
