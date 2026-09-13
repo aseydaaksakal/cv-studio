@@ -10,6 +10,23 @@
 
 import { pickLanguage, toMono } from "./core.js";
 
+/* ONNX Runtime and the WebGPU adapter print informational warnings during model
+ * loading AND during every inference pass — "VerifyEachNodeIsAssignedToAnEp",
+ * "powerPreference is currently ignored", etc. They fire from inside a third-party
+ * WASM module, so a load-time wrapper can't catch the ones that happen at inference.
+ * These lines are pure noise the user can never act on, so filter them permanently.
+ * Real errors (anything not matching this pattern) still reach the console. */
+(function silenceInferenceNoise() {
+  if (typeof console === "undefined" || console.__cvNoiseFiltered) return;
+  console.__cvNoiseFiltered = true;
+  const NOISE = /onnxruntime|VerifyEachNodeIsAssignedToAnEp|session_state\.cc|Some nodes were not assigned|Rerunning with verbose|powerPreference option is currently ignored/i;
+  for (const method of ["warn", "error", "log", "info", "debug"]) {
+    const orig = console[method]?.bind(console);
+    if (!orig) continue;
+    console[method] = (...args) => { if (!NOISE.test(String(args[0] ?? ""))) orig(...args); };
+  }
+})();
+
 /** Fallback list, used only when the real catalogue cannot be fetched. Kept to proven browser-safe models (<5GB). */
 export const LOCAL_MODELS = [
   ["Qwen2.5-3B-Instruct-q4f16_1-MLC", "Qwen 2.5 3B — ~2.0 GB · editing + parsing"],
@@ -176,14 +193,10 @@ export async function localTranscriber(model, onProgress = () => {}) {
       const onGPU = { device: "webgpu", dtype: { encoder_model: "fp16", decoder_model_merged: "q4" }, progress_callback };
       const onGPU_q4 = { device: "webgpu", dtype: "q4", progress_callback };
       const onCPU = { device: "wasm", dtype: "q8", progress_callback };
-      const oldLog = console.log, oldWarn = console.warn, oldInfo = console.info, oldErr = console.error;
-      /* Filter ORT/WebGPU node-assignment noise but keep real errors visible */
-      const isORTNoise = (args) => {
-        const s = String(args[0] ?? "");
-        return /onnxruntime|VerifyEachNodeIsAssignedToAnEp|session_state|powerPreference|Rerunning with verbose/i.test(s);
-      };
+      /* Silence verbose transformers/WebLLM download chatter during load.
+       * ORT inference noise is handled permanently by silenceInferenceNoise() above. */
+      const oldLog = console.log, oldWarn = console.warn, oldInfo = console.info;
       console.log = console.warn = console.info = () => {};
-      console.error = (...args) => { if (!isORTNoise(args)) oldErr.apply(console, args); };
       try {
         if (gpu) {
           try {
@@ -210,7 +223,6 @@ export async function localTranscriber(model, onProgress = () => {}) {
         console.log = oldLog;
         console.warn = oldWarn;
         console.info = oldInfo;
-        console.error = oldErr;
       }
       transcriberModel = model;
     } catch (e) {
