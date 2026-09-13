@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Live Translate — CV Studio</title>
+<meta name="description" content="Speak in any language and read it back in the one you pick. Runs in your browser: the speech model detects the language itself, nothing is uploaded.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗣️</text></svg>">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<header class="bar">
+  <strong>Live Translate</strong>
+  <a class="ghost small" href="./">← CV Studio</a>
+  <span class="spacer"></span>
+  <button type="button" id="btn-theme" class="icon" title="Theme">🌞</button>
+</header>
+
+<main class="tr-wrap">
+  <p class="muted" id="intro">
+    Speak in any language. The speech model works out which one on its own — you only choose what to read it back in.
+    Everything runs in this browser; no audio leaves the machine.
+  </p>
+
+  <div class="tr-controls">
+    <label>Read it back in
+      <select id="target"></select>
+    </label>
+    <label class="tr-check">
+      <input type="checkbox" id="twoway">
+      Two-way conversation
+      <span class="muted small" id="twoway-note">Each speaker uses their own language; each side is shown the other's.</span>
+    </label>
+    <label id="other-row" hidden>The other person speaks
+      <select id="other"></select>
+    </label>
+  </div>
+
+  <div class="tr-panes">
+    <section>
+      <h2 class="muted small">Heard <span id="heard-lang" class="tag"></span></h2>
+      <div id="heard" class="tr-pane" aria-live="polite"></div>
+    </section>
+    <section>
+      <h2 class="muted small">Translation</h2>
+      <div id="out" class="tr-pane" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <div class="tr-actions">
+    <button type="button" id="btn-mic" class="mic-big" title="Start and stop listening">🎤</button>
+    <span id="status" class="muted small"></span>
+  </div>
+
+  <div class="row">
+    <button type="button" id="btn-clear" class="ghost small">Clear</button>
+    <button type="button" id="btn-copy" class="ghost small">Copy translation</button>
+  </div>
+
+  <p class="muted small" id="engine-note"></p>
+</main>
+
+<script type="module" src="translate.js"></script>
+</body>
+</html>

@@ -35,6 +35,33 @@ const WHISPER_NAMES = {
 };
 export const whisperLangName = (code) => WHISPER_NAMES[code] || code;
 
+/* Languages the translator page can render into. Keyed by the same two-letter code
+   Whisper reports, so a detected language and a chosen target compare directly. */
+export const TRANSLATE_TARGETS = Object.entries(WHISPER_NAMES)
+  .map(([code, name]) => [code, name])
+  .sort((a, b) => a[1].localeCompare(b[1]));
+
+/**
+ * Instructions for translating one spoken phrase.
+ * Speech arrives with recognition errors and no punctuation, and a chatty model
+ * will "helpfully" answer the phrase instead of translating it — hence the
+ * explicit refusal to add anything.
+ * @param {string} text  the phrase as transcribed
+ * @param {string|null} fromCode  detected language, or null when unknown
+ * @param {string} toCode  target language
+ */
+export function translationPrompt(text, fromCode, toCode) {
+  const from = fromCode ? whisperLangName(fromCode) : "an unknown language";
+  const to = whisperLangName(toCode);
+  return {
+    system: `You are a translation engine. Translate the user's text from ${from} into ${to}.`
+      + ` Reply with the translation and nothing else: no quotes, no notes, no explanation, no romanisation.`
+      + ` The text is a speech transcript, so it may lack punctuation and contain recognition errors — translate the intended meaning.`
+      + ` If it is already in ${to}, repeat it unchanged. Never answer, continue or comment on the text; only translate it.`,
+    user: text,
+  };
+}
+
 /**
  * Language detection for Whisper: given the decoder's logits for the token right after <|startoftranscript|>
  * and the model's lang_to_id map ("<|tr|>" → id), return the most probable language code.

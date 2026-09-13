@@ -1,6 +1,7 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
 import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, applyOps, applyTheme, clearSelectedSessions, copySession, createDictationBuffer, createSession, deleteSession, deleteSessionsBatch, download, extractJSON, exportSessionsAsJSON, getActiveSession, getEffectiveTheme, getSelectedSessions, getSession, getSystemTheme, getTheme, looksDestructive, listSessions, normalize, plainText, renameSessionsBatch, renderATS, renderStyled, setActiveSession, setSelectedSessions, setSessionNotes, setTheme, updateSession, whisperLangName } from "./core.js";
-import { LOCAL_MODELS, LOCAL_WHISPER, UnknownModelError, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localTranscribeChunk, localWhisperId, ollamaModels, pickForBudget, probeModel, webgpuUsable } from "./engines.js";
+import { startPhraseListener } from "./listen.js";
+import { LOCAL_MODELS, LOCAL_WHISPER, UnknownModelError, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localWhisperId, ollamaModels, pickForBudget, probeModel, webgpuUsable } from "./engines.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
 
@@ -245,124 +246,38 @@ function toggleMic() {
 }
 
 /* ── any-language listener ────────────────────────────────────────────────────
- * Browser speech recognition is instant but has to be told the language up front —
- * it cannot detect one, so it cannot follow a speaker who switches languages.
- * Whisper detects the language itself but only works on a finished clip.
- *
- * So: watch the microphone level, cut a segment whenever the speaker pauses, and
- * transcribe each segment on its own. Every phrase gets its own language, which is
- * what makes switching languages mid-dictation work. Text lands a beat after each
- * phrase rather than word by word — the price of not being told the language.
- */
-const VAD = {
-  rate: 16000,
-  speechLevel: 0.012,   // RMS above this counts as speech
-  hangoverMs: 700,      // silence this long closes the phrase
-  minSpeechMs: 350,     // shorter blips are noise, not words
-  maxSegmentMs: 14000,  // flush long monologues so text keeps flowing
-};
-let autoCtx = null, autoStream = null, autoNode = null, autoSource = null, autoStopping = false, autoFlush = null, autoPending = 0;
+ * Phrase-at-a-time Whisper, shared with the translator page. See listen.js for
+ * why dictation lands a phrase at a time rather than word by word. */
+let listener = null;
 
 function stopAutoLingual() {
-  if (!autoCtx) return;
-  /* Transcribe whatever is still buffered before tearing the graph down, or the
-     phrase someone was midway through when they clicked stop is thrown away. */
-  try { autoFlush?.(); } catch { /* nothing buffered */ }
-  autoFlush = null;
-  autoStopping = true;
-  try { autoNode?.disconnect(); autoSource?.disconnect(); } catch { /* already torn down */ }
-  try { autoStream?.getTracks().forEach((t) => t.stop()); } catch { /* already stopped */ }
-  try { autoCtx.close(); } catch { /* already closed */ }
-  autoCtx = autoStream = autoNode = autoSource = null;
+  listener?.stop();
+  listener = null;
   setLive(false);
-  /* If nothing is still transcribing, settle the status now; otherwise the last
-     segment's finally-block does it once the queue drains. */
-  if (autoPending === 0) { micStatus($("#ask").value.trim() ? "Check the text, then press Enter." : ""); $("#ask").focus(); }
-  else micStatus("Finishing the last phrase…");
 }
 
 async function startAutoLingual() {
-  try { autoStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-  catch { micStatus("Microphone blocked — allow it in the address bar."); return; }
-
-  autoStopping = false;
-  autoCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: VAD.rate });
-  autoSource = autoCtx.createMediaStreamSource(autoStream);
-  /* ScriptProcessor is deprecated but is the one PCM tap that needs no separate
-     worklet file, which keeps this app a no-build-step static site. */
-  autoNode = autoCtx.createScriptProcessor(4096, 1, 1);
-
-  const model = fastWhisperFor(settings.localwhisper);
-  let segment = [], segmentSamples = 0, silenceSamples = 0, speaking = false;
-  const hangoverSamples = (VAD.hangoverMs / 1000) * VAD.rate;
-  const minSpeechSamples = (VAD.minSpeechMs / 1000) * VAD.rate;
-  const maxSegmentSamples = (VAD.maxSegmentMs / 1000) * VAD.rate;
   const buffer = createDictationBuffer($("#ask").value);
-  let spokeAnything = false;
-
-  const flush = () => {
-    if (segmentSamples < minSpeechSamples) { segment = []; segmentSamples = 0; return; }
-    const pcm = new Float32Array(segmentSamples);
-    let at = 0; for (const b of segment) { pcm.set(b, at); at += b.length; }
-    segment = []; segmentSamples = 0;
-    transcribeSegment(pcm);
+  const settle = () => {
+    micStatus($("#ask").value.trim() ? "Check the text, then press Enter." : "");
+    $("#ask").focus();
   };
-
-  const transcribeSegment = async (pcm) => {
-    autoPending++;
-    try {
-      const { text, language } = await localTranscribeChunk(model, pcm, (msg) => { if (!spokeAnything && !autoStopping) micStatus(msg); });
-      if (text) {
-        spokeAnything = true;
-        buffer.syncFromBox($("#ask").value);
-        /* compose() collapses whitespace runs, so a leading space is a safe separator. */
-        buffer.addFinal(" " + text);
-        $("#ask").value = buffer.compose();
-      }
-      if (!autoStopping) micStatus(`Listening… ${language ? whisperLangName(language) + " detected · " : ""}click again to stop.`);
-    } catch (e) {
-      console.error("Segment transcription failed:", e);
-      if (!autoStopping) micStatus("Could not transcribe that phrase — still listening.");
-    } finally {
-      /* Once the queue drains after a stop, hand the box back to the user. */
-      if (--autoPending === 0 && autoStopping) {
-        micStatus($("#ask").value.trim() ? "Check the text, then press Enter." : "");
-        $("#ask").focus();
-      }
-    }
-  };
-
-  autoNode.onaudioprocess = (e) => {
-    if (autoStopping) return;
-    const input = e.inputBuffer.getChannelData(0);
-    let sum = 0; for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
-    const rms = Math.sqrt(sum / input.length);
-
-    if (rms >= VAD.speechLevel) {
-      speaking = true; silenceSamples = 0;
-      segment.push(new Float32Array(input)); segmentSamples += input.length;
-    } else if (speaking) {
-      /* Keep the tail of the pause in the clip: cutting on the exact sample
-         clips the last consonant and Whisper drops the final word. */
-      segment.push(new Float32Array(input)); segmentSamples += input.length;
-      silenceSamples += input.length;
-      if (silenceSamples >= hangoverSamples) { speaking = false; silenceSamples = 0; flush(); }
-    }
-    if (segmentSamples >= maxSegmentSamples) { speaking = false; silenceSamples = 0; flush(); }
-  };
-
-  autoFlush = flush;
-  autoSource.connect(autoNode);
-  autoNode.connect(autoCtx.destination);
+  listener = await startPhraseListener({
+    model: settings.localwhisper,
+    onStatus: micStatus,
+    onSettled: settle,
+    onError: (e) => micStatus(e.message || "Could not transcribe that phrase — still listening."),
+    onPhrase: ({ text, language }) => {
+      buffer.syncFromBox($("#ask").value);
+      /* compose() collapses whitespace runs, so a leading space is a safe separator. */
+      buffer.addFinal(" " + text);
+      $("#ask").value = buffer.compose();
+      micStatus(`Listening… ${language ? whisperLangName(language) + " detected · " : ""}click again to stop.`);
+    },
+  });
+  if (!listener) return;
   setLive(true);
   micStatus("Listening in any language… click again to stop.");
-}
-
-/* Streaming wants a model that finishes a phrase in well under a second; the large
-   model is accurate but turns every pause into a visible wait. */
-function fastWhisperFor(chosen) {
-  const small = LOCAL_WHISPER[1][0];
-  return chosen === LOCAL_WHISPER[0][0] ? chosen : small;
 }
 
 /* Record, then hand the clip to a transcriber. Each one resolves with { text, language }; language is shown next to the mic when known. */
