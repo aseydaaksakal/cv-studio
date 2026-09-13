@@ -66,6 +66,14 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 
 /* ───────────────────────── schema ───────────────────────── */
 
+/* Appearance lives in the CV document itself so that "make the name red" or
+ * "increase the font size" are ordinary edits the model can make, exactly like
+ * changing a job title. Empty string means "use the stylesheet default". */
+export const EMPTY_THEME = () => ({
+  nameColor: "", headingColor: "", textColor: "", accentColor: "",
+  fontScale: 1, lineSpacing: 1, sectionGap: 1,
+});
+
 export const EMPTY = () => ({
   basics: { name: "", title: "", location: "", phone: "", email: "", links: [] },
   summary: "",
@@ -75,6 +83,7 @@ export const EMPTY = () => ({
   certifications: [],
   education: [],
   languages: [],
+  theme: EMPTY_THEME(),
 });
 
 export const SCHEMA_DOC = `{
@@ -85,7 +94,8 @@ export const SCHEMA_DOC = `{
   "projects": [{"name": "", "description": "", "link": ""}],
   "certifications": [{"name": "", "issuer": "", "year": ""}],
   "education": [{"degree": "", "school": "", "year": ""}],
-  "languages": [{"name": "", "level": ""}]
+  "languages": [{"name": "", "level": ""}],
+  "theme": {"nameColor": "", "headingColor": "", "textColor": "", "accentColor": "", "fontScale": 1, "lineSpacing": 1, "sectionGap": 1}
 }`;
 
 export const SAMPLE = {
@@ -117,7 +127,34 @@ export function normalize(cv) {
   out.experience = out.experience.map((e) => ({ title: "", company: "", location: "", start: "", end: "", ...e, bullets: Array.isArray(e.bullets) ? e.bullets.map(String) : [] }));
   out.skills = out.skills.map((s) => ({ group: "", ...s, items: Array.isArray(s.items) ? s.items.map(String) : String(s.items || "").split(",").map((x) => x.trim()).filter(Boolean) }));
   out.summary = String(out.summary || "");
+  out.theme = normalizeTheme(cv?.theme);
   return out;
+}
+
+/* CSS colours and scales go straight into a stylesheet, so anything the model
+ * invents has to be filtered here rather than trusted. Unrecognised colours and
+ * out-of-range scales fall back to the stylesheet default. */
+const CSS_COLOUR = /^(#[0-9a-f]{3}|#[0-9a-f]{6}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|[a-z]{3,20})$/i;
+const clampScale = (v, lo, hi) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : 1;
+};
+export const safeColour = (v) => {
+  const s = String(v ?? "").trim();
+  return CSS_COLOUR.test(s) ? s : "";
+};
+export function normalizeTheme(theme) {
+  const base = EMPTY_THEME();
+  const t = { ...base, ...(theme && typeof theme === "object" ? theme : {}) };
+  return {
+    nameColor: safeColour(t.nameColor),
+    headingColor: safeColour(t.headingColor),
+    textColor: safeColour(t.textColor),
+    accentColor: safeColour(t.accentColor),
+    fontScale: clampScale(t.fontScale, 0.7, 1.6),
+    lineSpacing: clampScale(t.lineSpacing, 0.8, 2),
+    sectionGap: clampScale(t.sectionGap, 0.4, 2.5),
+  };
 }
 
 export function extractJSON(text) {
@@ -175,11 +212,28 @@ Allowed operations:
   {"op":"insert","path":"<list path>","index":<n>,"value":<item>}
   {"op":"move","path":"<list path>","from":<i>,"to":<j>}
 Paths: basics.name, basics.title, basics.location, basics.phone, basics.email, basics.links (list of strings), summary, experience (list of {title,company,location,start,end,bullets}), experience.0.bullets.2, skills (list of {group,items}), projects (list of {name,description,link}), certifications (list of {name,issuer,year}), education (list of {degree,school,year}), languages (list of {name,level}).
+Appearance paths — use these for any instruction about colour, size or spacing, and never reply that appearance cannot be changed:
+  theme.nameColor      colour of the person's name       e.g. {"op":"set","path":"theme.nameColor","value":"red"}
+  theme.headingColor   colour of the section headings
+  theme.accentColor    colour of the job title under the name
+  theme.textColor      colour of the body text
+  theme.fontScale      text size multiplier, 0.7-1.6, 1 is normal   e.g. bigger text -> 1.15
+  theme.lineSpacing    line height multiplier, 0.8-2, 1 is normal
+  theme.sectionGap     gap between sections, 0.4-2.5, 1 is normal   e.g. less whitespace -> 0.7
+Colours must be a CSS colour name or hex (red, #c00, #cc0000). To undo a colour, set it to "".
 Rules: emit the fewest operations that fulfil the instruction; never invent employers, dates, numbers or credentials; keep the CV's language unless asked to translate; when translating, set each text field with its translation; when asked to shorten, delete the weakest bullets or shorten the summary. If the instruction is unclear or not about the CV, reply {"ops":[],"note":"<why>"}. No prose, no markdown fences.`;
 
 const LIST_KEYS = new Set(["links", "bullets", "items", "experience", "skills", "projects", "certifications", "education", "languages"]);
-const TOP_LEVEL = new Set(["basics", "summary", "experience", "skills", "projects", "certifications", "education", "languages"]);
+const TOP_LEVEL = new Set(["basics", "summary", "experience", "skills", "projects", "certifications", "education", "languages", "theme"]);
 const BASICS = new Set(["name", "title", "location", "phone", "email", "links"]);
+/* Appearance fields, so a bare "fontScale" or a loose "font_size" still lands under theme. */
+const THEME_KEYS = new Set(["namecolor", "headingcolor", "textcolor", "accentcolor", "fontscale", "linespacing", "sectiongap"]);
+const THEME_ALIASES = { color: "nameColor", namecolour: "nameColor", namecolor: "nameColor",
+  titlecolor: "nameColor", headingcolour: "headingColor", headingcolor: "headingColor",
+  textcolour: "textColor", textcolor: "textColor", accentcolour: "accentColor", accentcolor: "accentColor",
+  fontsize: "fontScale", font_size: "fontScale", fontscale: "fontScale", scale: "fontScale",
+  linespacing: "lineSpacing", lineheight: "lineSpacing", spacing: "lineSpacing",
+  sectiongap: "sectionGap", sectionspacing: "sectionGap", margin: "sectionGap" };
 const OP_ALIASES = { set: "set", update: "set", replace: "set", edit: "set", change: "set", write: "set",
   delete: "delete", remove: "delete", clear: "delete", del: "delete",
   append: "append", add: "append", push: "append", insert: "insert", move: "move", reorder: "move" };
@@ -206,6 +260,9 @@ export function normalizePath(path) {
     return /^\d+$/.test(x) ? x : (FIELD_ALIASES[k] || k);
   });
   if (parts.length && !TOP_LEVEL.has(parts[0]) && BASICS.has(parts[0])) parts.unshift("basics");
+  /* "fontScale" or "font_size" on its own means the theme, not a stray top-level key. */
+  if (parts.length && !TOP_LEVEL.has(parts[0]) && (THEME_KEYS.has(parts[0]) || THEME_ALIASES[parts[0]])) parts.unshift("theme");
+  if (parts[0] === "theme" && parts[1]) parts[1] = THEME_ALIASES[parts[1]] || parts[1];
   return parts.join(".");
 }
 
@@ -288,21 +345,28 @@ function lineJoin(parts, sep = " | ") { return parts.filter(Boolean).map(esc).jo
 
 /* ───────────────────────── templates ───────────────────────── */
 
-export const BASE_CSS = (serif) => `
+/* `theme` is already validated by normalizeTheme, so its values are safe to
+ * interpolate; scales multiply the print-tuned defaults rather than replacing
+ * them, which keeps an A4 page looking like an A4 page at any setting. */
+export const BASE_CSS = (serif, theme = EMPTY_THEME()) => {
+  const t = normalizeTheme(theme);
+  const pt = (n) => `${(n * t.fontScale).toFixed(2)}pt`;
+  return `
   @page { size: A4; margin: 12mm 14mm; }
-  html,body { margin:0; padding:0; background:#fff; color:#000; }
-  body { font-family: ${serif ? "'Liberation Serif','Times New Roman',Times,serif" : "'Liberation Sans',Helvetica,Arial,sans-serif"}; font-size:${serif ? "9.4pt" : "8.8pt"}; line-height:1.36; padding:12mm 14mm; }
+  html,body { margin:0; padding:0; background:#fff; color:${t.textColor || "#000"}; }
+  body { font-family: ${serif ? "'Liberation Serif','Times New Roman',Times,serif" : "'Liberation Sans',Helvetica,Arial,sans-serif"}; font-size:${pt(serif ? 9.4 : 8.8)}; line-height:${(1.36 * t.lineSpacing).toFixed(2)}; padding:12mm 14mm; }
   @media print { body { padding:0; } }
-  .hdr { display:flex; gap:12pt; align-items:flex-start; margin-bottom:14pt; }
+  .hdr { display:flex; gap:12pt; align-items:flex-start; margin-bottom:${(14 * t.sectionGap).toFixed(1)}pt; }
   .pic { width:64pt; height:64pt; border-radius:50%; object-fit:cover; flex:none; }
-  .name { font-size:${serif ? "19pt" : "18pt"}; line-height:1.15; }
-  .role { font-weight:bold; margin-top:2pt; } .contact { margin-top:3pt; }
-  h2 { font-size:${serif ? "9.6pt" : "9.2pt"}; letter-spacing:.02em; margin:0 0 6pt; padding-bottom:3pt; border-bottom:.6pt solid #000; text-transform:uppercase; }
-  .sec { margin-bottom:12pt; } p { margin:0 0 5pt; } .tight p { margin-bottom:4pt; }
-  .job { margin-bottom:6pt; } .job .jh { display:flex; justify-content:space-between; gap:8pt; } .job .jh b { font-weight:bold; }
+  .name { font-size:${pt(serif ? 19 : 18)}; line-height:1.15;${t.nameColor ? ` color:${t.nameColor};` : ""} }
+  .role { font-weight:bold; margin-top:2pt;${t.accentColor ? ` color:${t.accentColor};` : ""} } .contact { margin-top:3pt; }
+  h2 { font-size:${pt(serif ? 9.6 : 9.2)}; letter-spacing:.02em; margin:0 0 6pt; padding-bottom:3pt; border-bottom:.6pt solid ${t.headingColor || "#000"}; text-transform:uppercase;${t.headingColor ? ` color:${t.headingColor};` : ""} }
+  .sec { margin-bottom:${(12 * t.sectionGap).toFixed(1)}pt; } p { margin:0 0 5pt; } .tight p { margin-bottom:4pt; }
+  .job { margin-bottom:${(6 * t.sectionGap).toFixed(1)}pt; } .job .jh { display:flex; justify-content:space-between; gap:8pt; } .job .jh b { font-weight:bold; }
   ul { margin:2pt 0 0 12pt; padding:0; } li { margin-bottom:1.5pt; }
   .dot { margin:0 5pt; }
 `;
+};
 export const ATS_CSS = `@page { size:A4; margin:16mm; } body { font-family: Arial, Helvetica, sans-serif; font-size:10pt; line-height:1.4; color:#000; padding:16mm; margin:0; } @media print { body{padding:0} } h1{font-size:16pt;margin:0 0 2pt} h2{font-size:11pt;margin:14pt 0 4pt;text-transform:uppercase} p{margin:0 0 4pt} ul{margin:2pt 0 4pt 16pt;padding:0} .sub{font-weight:bold}`;
 
 
@@ -320,7 +384,7 @@ export function renderStyled(cv, serif, { photo = null } = {}) {
   if (cv.certifications.length) h += `<div class="sec tight"><h2>Certifications</h2>` + cv.certifications.map((c) => `<p><b>${esc(c.name)}</b> / ${lineJoin([c.issuer, c.year], " / ")}</p>`).join("") + `</div>`;
   if (cv.education.length) h += `<div class="sec tight"><h2>Education</h2>` + cv.education.map((e) => `<p><b>${esc(e.school)}</b> — ${lineJoin([e.degree, e.year], " / ")}</p>`).join("") + `</div>`;
   if (cv.languages.length) h += `<div class="sec"><h2>Languages</h2><p>${cv.languages.map((l) => `<b>${esc(l.name)}</b> / ${esc(l.level)}`).join(" <span class='dot'>·</span> ")}</p></div>`;
-  return `<!doctype html><html><head><meta charset="utf-8"><style>${BASE_CSS(serif)}</style></head><body>${h}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${BASE_CSS(serif, cv.theme)}</style></head><body>${h}</body></html>`;
 }
 export function renderATS(cv) {
   const b = cv.basics;
