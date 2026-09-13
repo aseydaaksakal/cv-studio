@@ -133,6 +133,23 @@ test("'remove the line under the headings' hides the rule instead of deleting a 
 
 /* ── the content commands the owner listed, driven through applyOps ─────────── */
 
+test("a container segment the model invented is stripped instead of dropping the edit", () => {
+  /* "Skills bölümündeki languages'ın yanına java ekle" produced
+     append skills.groups.1.items, which was rejected as "no such field" and the
+     whole instruction was lost. The list is its own container. */
+  assert.equal(normalizePath("skills.groups.1.items"), "skills.1.items");
+  assert.equal(normalizePath("experience.list.0.title"), "experience.0.title");
+  assert.equal(normalizePath("education.entries.0.school"), "education.0.school");
+  // A real field that happens to share the name is untouched.
+  assert.equal(normalizePath("skills.0.items"), "skills.0.items");
+  assert.equal(normalizePath("experience.0.bullets.1"), "experience.0.bullets.1");
+
+  const { cv, skipped } = applyOps(normalize(SAMPLE), [{ op: "append", path: "skills.groups.1.items", value: "Java" }]);
+  assert.deepEqual(skipped, []);
+  assert.ok(cv.skills[1].items.includes("Java"));
+  assert.match(render(cv), /Java/);
+});
+
 test("delete an experience entry", () => {
   const before = normalize(SAMPLE);
   const { cv, skipped } = applyOps(before, [{ op: "delete", path: "experience.1" }]);

@@ -62,7 +62,6 @@
         <button type="submit" id="btn-ask" class="icon in-box send" title="Apply (Enter)">↵</button>
       </div>
       <div class="composer-row">
-        <select id="speak-lang" class="small" title="Language you speak"></select>
         <span id="mic-status" class="muted small"></span>
         <span class="spacer"></span>
         <span id="status" class="status small"></span>
@@ -207,14 +206,11 @@
     <label id="desktopurl-row" hidden>Desktop backend URL <input type="text" id="desktopurl" placeholder="http://localhost:8000"></label>
     <label>Voice engine
       <select id="engine">
-        <option value="browser">Live in this browser — words appear as you speak, no download, no key</option>
-        <option value="auto">Any language — detects each phrase's language, switch languages freely</option>
-        <option value="local">In this browser — Whisper, detects the language, no key</option>
-        <option value="desktop">CV Studio desktop backend on my machine or tunnel — faster-whisper</option>
+        <option value="auto">In this browser — detects the language itself, no key (live demo)</option>
+        <option value="desktop">On my own machine — CV Studio desktop backend, faster-whisper</option>
         <option value="whisper">Whisper API (OpenAI) — your key</option>
       </select>
     </label>
-    <label id="voicelang-row">Speaking language <select id="voicelang"></select></label>
     <label id="localwhisper-row">Local Whisper size <select id="localwhisper"></select></label>
     <label id="sttkey-row" hidden>OpenAI key for Whisper API <input type="password" id="sttkey" autocomplete="off"></label>
     <p class="muted small" id="gpu-note"></p>

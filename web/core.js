@@ -294,11 +294,14 @@ Section heading text — rename or translate headings here, never leave them in 
   e.g. rename LANGUAGES to DİLLER -> {"op":"set","path":"labels.languages","value":"Diller"}
   When translating the CV, translate these labels too.
 The photo is not part of this JSON. If asked to add one, reply {"ops":[],"note":"<tell the user to use the Photo checkbox in the toolbar>"}. If asked to remove it, do the same and say the same.
+basics.name is the person's name and nothing else — never append a job title, a dash or any other text to it. "the line under the name", "the text below the name", "the headline" all mean basics.title, which is a separate field.
 Rules: emit the fewest operations that fulfil the instruction; never invent employers, dates, numbers or credentials; keep the CV's language unless asked to translate; when translating, set each text field with its translation; when asked to shorten, delete the weakest bullets or shorten the summary. If the instruction is unclear or not about the CV, reply {"ops":[],"note":"<why>"}. No prose, no markdown fences.`;
 
 const LIST_KEYS = new Set(["links", "bullets", "items", "experience", "skills", "projects", "certifications", "education", "languages"]);
 const TOP_LEVEL = new Set(["basics", "summary", "experience", "skills", "projects", "certifications", "education", "languages", "theme"]);
 const BASICS = new Set(["name", "title", "location", "phone", "email", "links"]);
+/* Container words models insert between a list and its index; the list is the container. */
+const FILLER_SEGMENTS = new Set(["groups", "group", "items", "list", "entries", "elements", "array", "values"]);
 /* Appearance fields, so a bare "fontScale" or a loose "font_size" still lands under theme. */
 const THEME_KEYS = new Set(["namecolor", "headingcolor", "textcolor", "accentcolor", "fontscale", "linespacing", "sectiongap"]);
 const THEME_ALIASES = { color: "nameColor", namecolour: "nameColor", namecolor: "nameColor",
@@ -336,6 +339,12 @@ export function normalizePath(path) {
     return /^\d+$/.test(x) ? x : (FIELD_ALIASES[k] || k);
   });
   if (parts.length && !TOP_LEVEL.has(parts[0]) && BASICS.has(parts[0])) parts.unshift("basics");
+  /* Models invent a container segment that does not exist — skills.groups.1.items,
+     experience.items.0, education.list.0 — and the whole edit was being dropped as
+     "no such field". The list itself is the container, so strip the filler. */
+  for (let i = parts.length - 2; i >= 1; i--) {
+    if (FILLER_SEGMENTS.has(parts[i]) && TOP_LEVEL.has(parts[i - 1])) parts.splice(i, 1);
+  }
   /* "fontScale" or "font_size" on its own means the theme, not a stray top-level key. */
   if (parts.length && !TOP_LEVEL.has(parts[0]) && (THEME_KEYS.has(parts[0]) || THEME_ALIASES[parts[0]])) parts.unshift("theme");
   if (parts[0] === "theme" && parts[1]) parts[1] = THEME_ALIASES[parts[1]] || parts[1];

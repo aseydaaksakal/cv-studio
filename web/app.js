@@ -1,5 +1,5 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
-import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, VOICE_LANGS, applyField, applyOps, applyTheme, clearSelectedSessions, copySession, createDictationBuffer, createSession, defaultVoiceLang, deleteSession, deleteSessionsBatch, download, extractJSON, exportSessionsAsJSON, getActiveSession, getEffectiveTheme, getSelectedSessions, getSession, getSystemTheme, getTheme, looksDestructive, listSessions, normalize, plainText, renameSessionsBatch, renderATS, renderStyled, setActiveSession, setSelectedSessions, setSessionNotes, setTheme, updateSession, whisperLangName } from "./core.js";
+import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, applyOps, applyTheme, clearSelectedSessions, copySession, createDictationBuffer, createSession, deleteSession, deleteSessionsBatch, download, extractJSON, exportSessionsAsJSON, getActiveSession, getEffectiveTheme, getSelectedSessions, getSession, getSystemTheme, getTheme, looksDestructive, listSessions, normalize, plainText, renameSessionsBatch, renderATS, renderStyled, setActiveSession, setSelectedSessions, setSessionNotes, setTheme, updateSession, whisperLangName } from "./core.js";
 import { LOCAL_MODELS, LOCAL_WHISPER, UnknownModelError, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localTranscribeChunk, localWhisperId, ollamaModels, pickForBudget, probeModel, webgpuUsable } from "./engines.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
@@ -9,13 +9,17 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dis
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const state = { cv: EMPTY(), history: [], photo: null, busy: false };
-const settings = Object.assign({ provider: "local", engine: "browser", voicelang: "", localmodel: LOCAL_MODELS[3][0], custommodel: "", localwhisper: LOCAL_WHISPER[1][0], ollamaurl: "http://localhost:11434", ollamamodel: "qwen3.8:27b", desktopurl: "http://localhost:8000" }, JSON.parse(localStorage.getItem("cvstudio.settings") || "{}"));
+const settings = Object.assign({ provider: "local", engine: "auto", localmodel: LOCAL_MODELS[3][0], custommodel: "", localwhisper: LOCAL_WHISPER[1][0], ollamaurl: "http://localhost:11434", ollamamodel: "qwen3.8:27b", desktopurl: "http://localhost:8000" }, JSON.parse(localStorage.getItem("cvstudio.settings") || "{}"));
 const saveSettings = () => localStorage.setItem("cvstudio.settings", JSON.stringify(settings));
-/* The old default was in-browser Whisper: a 340 MB download, then 10-40 s of GPU
-   compilation, then a batch transcribe that only starts once you stop talking.
-   Browser speech recognition writes words as they are spoken with no download at
-   all, so move everyone onto it once. Picking Whisper afterwards still sticks. */
-if (!settings.enginev2) { settings.engine = "browser"; settings.enginev2 = true; saveSettings(); }
+/* Retired engines: "browser" (SpeechRecognition, could not detect a language) and
+   "local" (batch Whisper, superseded by "auto", which streams the same model).
+   Move anyone still on them across once; later choices stick. */
+if (settings.enginev3 !== true) {
+  if (settings.engine === "browser" || settings.engine === "local" || !settings.engine) settings.engine = "auto";
+  delete settings.voicelang;
+  settings.enginev3 = true;
+  saveSettings();
+}
 const progress = (msg, pct) => status(pct ? `${msg} ${pct}%` : msg);
 
 function persist() {
@@ -208,19 +212,29 @@ async function readFile(file) {
 
 /* ───────────────────────── voice ───────────────────────── */
 
-const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognizer = null, recorder = null, listening = false;
+let recorder = null, listening = false;
 const micStatus = (t) => { $("#mic-status").textContent = t; };
 const setLive = (on) => { listening = on; $("#btn-mic").classList.toggle("live", on); };
 
+/* Three ways to turn speech into text, one per deployment tier:
+ *   auto     — Whisper in this browser. Detects the language per phrase, so a
+ *              speaker can move between Turkish, English and German freely.
+ *              This is what the live demo runs on.
+ *   desktop  — faster-whisper on the owner's own machine.
+ *   whisper  — the OpenAI API, for people who would rather bring a key.
+ *
+ * The browser's own SpeechRecognition was removed: it has to be told the language
+ * up front and cannot detect one, so English spoken while it was set to Turkish
+ * came out as Turkish-sounding nonsense ("who are you" -> "huawai"). Keeping it
+ * would have meant keeping the language picker, which is the thing it made
+ * necessary. Every remaining engine detects the language from the audio. */
 function toggleMic() {
-  if (listening) { stopBrowser(); stopAutoLingual(); if (recorder && recorder.state === "recording") recorder.stop(); return; }
+  if (listening) { stopAutoLingual(); if (recorder && recorder.state === "recording") recorder.stop(); return; }
   if (settings.engine === "auto") return startAutoLingual();
-  if (settings.engine === "browser") return startBrowser();
-  const engines = { whisper: transcribeWithAPI, desktop: transcribeWithDesktop, local: transcribeLocally };
-  const chosen = engines[settings.engine] || transcribeLocally;
+  const engines = { whisper: transcribeWithAPI, desktop: transcribeWithDesktop };
+  const chosen = engines[settings.engine];
+  if (!chosen) return startAutoLingual();
   const withFallback = async (blob) => {
-    if (chosen === transcribeLocally) return transcribeLocally(blob);
     try { return await chosen(blob); }
     catch (e) {
       micStatus(`${e.message} Falling back to in-browser Whisper…`);
@@ -228,61 +242,6 @@ function toggleMic() {
     }
   };
   return startRecording(withFallback);
-}
-
-/* Browser recogniser: the words land in the box while you are still talking, with no
- * model download and no server call. This is the default engine. */
-let recogStopping = false;
-function stopBrowser() {
-  if (!recognizer) return;
-  recogStopping = true;
-  try { recognizer.stop(); } catch { /* already stopped */ }
-}
-
-function startBrowser() {
-  if (!Recognition) { micStatus("This browser has no speech recognition — switch the voice engine to in-browser Whisper in settings."); return; }
-  const lang = defaultVoiceLang(settings.voicelang, navigator.language);
-  const langLabel = (VOICE_LANGS.find(([c]) => c === lang) || [, lang])[1];
-  /* Whatever the user already typed stays put; speech is appended to it. */
-  const buffer = createDictationBuffer($("#ask").value);
-  recogStopping = false;
-
-  recognizer = new Recognition();
-  recognizer.lang = lang;
-  recognizer.interimResults = true;
-  recognizer.continuous = true;
-
-  recognizer.onstart = () => { setLive(true); micStatus(`Listening (${langLabel})… click again to stop.`); };
-  recognizer.onresult = (e) => {
-    /* Reconcile with the box BEFORE folding in this event: if the user cleared it,
-       everything said earlier must be dropped, and only what arrives from here on
-       counts. Checking afterwards would fold the old transcript back in. */
-    buffer.syncFromBox($("#ask").value);
-    /* Results before resultIndex are already settled — only read the new ones,
-       so finals accumulate instead of being re-added on every event. */
-    let interim = "";
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const r = e.results[i];
-      if (r.isFinal) buffer.addFinal(r[0].transcript);
-      else interim += r[0].transcript;
-    }
-    $("#ask").value = buffer.compose(interim);
-  };
-  recognizer.onerror = (e) => {
-    /* no-speech and aborted fire during normal pauses; onend restarts us. */
-    if (e.error === "no-speech" || e.error === "aborted") return;
-    recogStopping = true;
-    micStatus(e.error === "not-allowed" ? "Microphone blocked — allow it in the address bar." : "Voice error: " + e.error);
-  };
-  recognizer.onend = () => {
-    /* Chrome ends the session on its own after a pause even in continuous mode.
-       Restart until the user actually clicks stop, so long dictation isn't cut off. */
-    if (!recogStopping) { try { recognizer.start(); return; } catch { /* fall through to stop */ } }
-    setLive(false);
-    micStatus($("#ask").value.trim() ? "Check the text, then press Enter." : "");
-    $("#ask").focus();
-  };
-  recognizer.start();
 }
 
 /* ── any-language listener ────────────────────────────────────────────────────
@@ -611,17 +570,6 @@ async function loadRealModelList() {
   syncSettingsForm();
 }
 for (const [v, label] of LOCAL_WHISPER) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#localwhisper").appendChild(o); }
-for (const [v, label] of VOICE_LANGS) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#voicelang").appendChild(o); }
-/* Same picker next to the mic: guessing the spoken language from the browser UI
-   language is unreliable, so make correcting it a one-click job. */
-for (const [v, label] of VOICE_LANGS) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#speak-lang").appendChild(o); }
-$("#speak-lang").value = defaultVoiceLang(settings.voicelang, navigator.language);
-$("#speak-lang").hidden = settings.engine !== "browser";
-$("#speak-lang").onchange = () => {
-  settings.voicelang = $("#speak-lang").value; saveSettings();
-  if ($("#voicelang")) $("#voicelang").value = settings.voicelang;
-  if (listening) { stopBrowser(); setTimeout(startBrowser, 200); }
-};
 /* Show a warning when large-v3-turbo is selected but GPU is unavailable */
 webgpuUsable().then((gpu) => {
   const whisperSel = $("#localwhisper");
@@ -646,10 +594,7 @@ function syncSettingsForm() {
     $("#ollama-installed").innerHTML = names.map((n) => `<option value="${n}">`).join("");
     $("#gpu-note").textContent = names.length ? `Ollama reachable — installed: ${names.slice(0, 6).join(", ")}${names.length > 6 ? "…" : ""}` : "Ollama not reachable yet — check the URL and OLLAMA_ORIGINS (see README).";
   });
-  $("#localwhisper-row").hidden = !(e === "local" || e === "auto"); $("#sttkey-row").hidden = e !== "whisper"; $("#desktopurl-row").hidden = e !== "desktop";
-  $("#voicelang-row").hidden = e !== "browser";
-  /* Auto mode detects the language per phrase, so the picker beside the mic is meaningless there. */
-  $("#speak-lang").hidden = e !== "browser";
+  $("#localwhisper-row").hidden = e !== "auto"; $("#sttkey-row").hidden = e !== "whisper"; $("#desktopurl-row").hidden = e !== "desktop";
   $("#model").placeholder = p === "openai" ? "gpt-4o-mini" : "claude-sonnet-5";
   if (p === "local") $("#gpu-note").textContent = hasWebGPU()
     ? "WebGPU available. Only models this browser can actually run are listed — press Test this model to confirm yours works."
@@ -659,7 +604,6 @@ function syncSettingsForm() {
 const openSettings = () => {
   $("#provider").value = settings.provider; $("#localmodel").value = settings.localmodel; $("#custommodel").value = settings.custommodel || ""; $("#apikey").value = settings.apikey || ""; $("#model").value = settings.model || ""; $("#baseurl").value = settings.baseurl || "";
   $("#engine").value = settings.engine; $("#localwhisper").value = settings.localwhisper; $("#sttkey").value = settings.sttkey || "";
-  $("#voicelang").value = defaultVoiceLang(settings.voicelang, navigator.language);
   $("#ollamaurl").value = settings.ollamaurl; $("#ollamamodel").value = settings.ollamamodel; $("#desktopurl").value = settings.desktopurl;
   syncSettingsForm(); dlg.showModal(); loadRealModelList();
 };
@@ -682,9 +626,8 @@ $("#btn-test-model").onclick = async () => {
   finally { Object.assign(settings, saved); btn.disabled = false; }
 };
 $("#btn-save-settings").onclick = () => {
-  Object.assign(settings, { provider: $("#provider").value, localmodel: $("#localmodel").value, custommodel: $("#custommodel").value.trim(), apikey: $("#apikey").value.trim(), model: $("#model").value.trim(), baseurl: $("#baseurl").value.trim(), engine: $("#engine").value, localwhisper: $("#localwhisper").value, voicelang: $("#voicelang").value, sttkey: $("#sttkey").value.trim(), enginev2: true, ollamaurl: $("#ollamaurl").value.trim() || "http://localhost:11434", ollamamodel: $("#ollamamodel").value.trim() || "qwen3.8:27b", desktopurl: $("#desktopurl").value.trim() || "http://localhost:8000" });
+  Object.assign(settings, { provider: $("#provider").value, localmodel: $("#localmodel").value, custommodel: $("#custommodel").value.trim(), apikey: $("#apikey").value.trim(), model: $("#model").value.trim(), baseurl: $("#baseurl").value.trim(), engine: $("#engine").value, localwhisper: $("#localwhisper").value, sttkey: $("#sttkey").value.trim(), enginev3: true, ollamaurl: $("#ollamaurl").value.trim() || "http://localhost:11434", ollamamodel: $("#ollamamodel").value.trim() || "qwen3.8:27b", desktopurl: $("#desktopurl").value.trim() || "http://localhost:8000" });
   saveSettings();
-  $("#speak-lang").value = defaultVoiceLang(settings.voicelang, navigator.language);
 };
 
 /* ───────────────────────── dark mode theme toggle ───────────────────────── */
