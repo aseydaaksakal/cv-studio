@@ -299,18 +299,24 @@ const VAD = {
   minSpeechMs: 350,     // shorter blips are noise, not words
   maxSegmentMs: 14000,  // flush long monologues so text keeps flowing
 };
-let autoCtx = null, autoStream = null, autoNode = null, autoSource = null, autoStopping = false;
+let autoCtx = null, autoStream = null, autoNode = null, autoSource = null, autoStopping = false, autoFlush = null, autoPending = 0;
 
 function stopAutoLingual() {
   if (!autoCtx) return;
+  /* Transcribe whatever is still buffered before tearing the graph down, or the
+     phrase someone was midway through when they clicked stop is thrown away. */
+  try { autoFlush?.(); } catch { /* nothing buffered */ }
+  autoFlush = null;
   autoStopping = true;
   try { autoNode?.disconnect(); autoSource?.disconnect(); } catch { /* already torn down */ }
   try { autoStream?.getTracks().forEach((t) => t.stop()); } catch { /* already stopped */ }
   try { autoCtx.close(); } catch { /* already closed */ }
   autoCtx = autoStream = autoNode = autoSource = null;
   setLive(false);
-  micStatus($("#ask").value.trim() ? "Check the text, then press Enter." : "");
-  $("#ask").focus();
+  /* If nothing is still transcribing, settle the status now; otherwise the last
+     segment's finally-block does it once the queue drains. */
+  if (autoPending === 0) { micStatus($("#ask").value.trim() ? "Check the text, then press Enter." : ""); $("#ask").focus(); }
+  else micStatus("Finishing the last phrase…");
 }
 
 async function startAutoLingual() {
@@ -341,16 +347,23 @@ async function startAutoLingual() {
   };
 
   const transcribeSegment = async (pcm) => {
+    autoPending++;
     try {
-      const { text, language } = await localTranscribeChunk(model, pcm, (msg) => { if (!settled) micStatus(msg); });
-      if (autoStopping && !text) return;
-      if (!text) return;
-      settled = (settled ? settled + " " : "") + text;
-      $("#ask").value = [baseText, settled].filter(Boolean).join(" ");
-      micStatus(`Listening… ${language ? whisperLangName(language) + " detected · " : ""}click again to stop.`);
+      const { text, language } = await localTranscribeChunk(model, pcm, (msg) => { if (!settled && !autoStopping) micStatus(msg); });
+      if (text) {
+        settled = (settled ? settled + " " : "") + text;
+        $("#ask").value = [baseText, settled].filter(Boolean).join(" ");
+      }
+      if (!autoStopping) micStatus(`Listening… ${language ? whisperLangName(language) + " detected · " : ""}click again to stop.`);
     } catch (e) {
       console.error("Segment transcription failed:", e);
-      micStatus("Could not transcribe that phrase — still listening.");
+      if (!autoStopping) micStatus("Could not transcribe that phrase — still listening.");
+    } finally {
+      /* Once the queue drains after a stop, hand the box back to the user. */
+      if (--autoPending === 0 && autoStopping) {
+        micStatus($("#ask").value.trim() ? "Check the text, then press Enter." : "");
+        $("#ask").focus();
+      }
     }
   };
 
@@ -373,6 +386,7 @@ async function startAutoLingual() {
     if (segmentSamples >= maxSegmentSamples) { speaking = false; silenceSamples = 0; flush(); }
   };
 
+  autoFlush = flush;
   autoSource.connect(autoNode);
   autoNode.connect(autoCtx.destination);
   setLive(true);
