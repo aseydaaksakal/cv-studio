@@ -158,6 +158,10 @@ export async function localTranscriber(model, onProgress = () => {}) {
       tf = await import(TRANSFORMERS_URL);
       const { pipeline, env } = tf;
       env.allowLocalModels = false;
+      /* Silence noisy ORT/WebGPU node-assignment warnings — they're informational, not errors */
+      if (env.backends?.onnx?.wasm) env.backends.onnx.wasm.logLevel = "error";
+      if (env.backends?.onnx?.webgpu) env.backends.onnx.webgpu.logLevel = "error";
+      if (env.backends?.onnx) env.backends.onnx.logSeverityLevel = 3;
       _whisperProgress(gpu ? "Downloading speech model…" : "Loading speech model on processor (may be slow)…", 0);
       const progress_callback = (p) => {
         if (p.status === "progress") {
@@ -172,8 +176,14 @@ export async function localTranscriber(model, onProgress = () => {}) {
       const onGPU = { device: "webgpu", dtype: { encoder_model: "fp16", decoder_model_merged: "q4" }, progress_callback };
       const onGPU_q4 = { device: "webgpu", dtype: "q4", progress_callback };
       const onCPU = { device: "wasm", dtype: "q8", progress_callback };
-      const oldLog = console.log, oldWarn = console.warn, oldInfo = console.info;
+      const oldLog = console.log, oldWarn = console.warn, oldInfo = console.info, oldErr = console.error;
+      /* Filter ORT/WebGPU node-assignment noise but keep real errors visible */
+      const isORTNoise = (args) => {
+        const s = String(args[0] ?? "");
+        return /onnxruntime|VerifyEachNodeIsAssignedToAnEp|session_state|powerPreference|Rerunning with verbose/i.test(s);
+      };
       console.log = console.warn = console.info = () => {};
+      console.error = (...args) => { if (!isORTNoise(args)) oldErr.apply(console, args); };
       try {
         if (gpu) {
           try {
@@ -200,6 +210,7 @@ export async function localTranscriber(model, onProgress = () => {}) {
         console.log = oldLog;
         console.warn = oldWarn;
         console.info = oldInfo;
+        console.error = oldErr;
       }
       transcriberModel = model;
     } catch (e) {

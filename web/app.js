@@ -840,11 +840,17 @@ if (sessions.length > 0) {
   if (saved && state.cv.basics.name) { showWorkspace(); say("assistant", `Welcome back, ${state.cv.basics.name.split(" ")[0]}. Your CV is restored from this browser.`); }
 }
 
-// Pre-load Whisper model in background for instant microphone access
-if (settings.engine === "local") {
+// Lazy-load Whisper on first mic hover — saves bandwidth for users who never speak
+// and lets the user see download progress on first click if they didn't hover
+let whisperPreloadStarted = false;
+function startWhisperPreload() {
+  if (whisperPreloadStarted || settings.engine !== "local") return;
+  whisperPreloadStarted = true;
   import("./engines.js").then(({ localTranscriber, localWhisperId }) => {
-    localTranscriber(localWhisperId(settings.localwhisper), () => {}).catch((e) => {
+    localTranscriber(localWhisperId(settings.localwhisper), (msg) => micStatus(msg)).catch((e) => {
       console.error("Whisper pre-load failed:", e);
+      whisperPreloadStarted = false;
     });
   });
 }
+$("#btn-mic")?.addEventListener("mouseenter", startWhisperPreload, { once: true });
