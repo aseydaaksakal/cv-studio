@@ -487,6 +487,15 @@ async function loadRealModelList() {
 }
 for (const [v, label] of LOCAL_WHISPER) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#localwhisper").appendChild(o); }
 for (const [v, label] of VOICE_LANGS) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#voicelang").appendChild(o); }
+/* Same picker next to the mic: guessing the spoken language from the browser UI
+   language is unreliable, so make correcting it a one-click job. */
+for (const [v, label] of VOICE_LANGS) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#speak-lang").appendChild(o); }
+$("#speak-lang").value = defaultVoiceLang(settings.voicelang, navigator.language);
+$("#speak-lang").onchange = () => {
+  settings.voicelang = $("#speak-lang").value; saveSettings();
+  if ($("#voicelang")) $("#voicelang").value = settings.voicelang;
+  if (listening) { stopBrowser(); setTimeout(startBrowser, 200); }
+};
 /* Show a warning when large-v3-turbo is selected but GPU is unavailable */
 webgpuUsable().then((gpu) => {
   const whisperSel = $("#localwhisper");
@@ -545,8 +554,9 @@ $("#btn-test-model").onclick = async () => {
   finally { Object.assign(settings, saved); btn.disabled = false; }
 };
 $("#btn-save-settings").onclick = () => {
-  Object.assign(settings, { provider: $("#provider").value, localmodel: $("#localmodel").value, custommodel: $("#custommodel").value.trim(), apikey: $("#apikey").value.trim(), model: $("#model").value.trim(), baseurl: $("#baseurl").value.trim(), engine: $("#engine").value, localwhisper: $("#localwhisper").value, voicelang: $("#voicelang").value, sttkey: $("#sttkey").value.trim(), ollamaurl: $("#ollamaurl").value.trim() || "http://localhost:11434", ollamamodel: $("#ollamamodel").value.trim() || "qwen3.8:27b", desktopurl: $("#desktopurl").value.trim() || "http://localhost:8000" });
+  Object.assign(settings, { provider: $("#provider").value, localmodel: $("#localmodel").value, custommodel: $("#custommodel").value.trim(), apikey: $("#apikey").value.trim(), model: $("#model").value.trim(), baseurl: $("#baseurl").value.trim(), engine: $("#engine").value, localwhisper: $("#localwhisper").value, voicelang: $("#voicelang").value, sttkey: $("#sttkey").value.trim(), enginev2: true, ollamaurl: $("#ollamaurl").value.trim() || "http://localhost:11434", ollamamodel: $("#ollamamodel").value.trim() || "qwen3.8:27b", desktopurl: $("#desktopurl").value.trim() || "http://localhost:8000" });
   saveSettings();
+  $("#speak-lang").value = defaultVoiceLang(settings.voicelang, navigator.language);
 };
 
 /* ───────────────────────── dark mode theme toggle ───────────────────────── */

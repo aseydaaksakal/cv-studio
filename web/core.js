@@ -10,11 +10,17 @@ export const VOICE_LANGS = [
 /** Best default for the speech recogniser: the user's saved choice, else a Turkish or matching browser locale. */
 export function defaultVoiceLang(saved, navigatorLanguage) {
   if (saved && VOICE_LANGS.some(([c]) => c === saved)) return saved;
-  const nav = (navigatorLanguage || "en-US");
-  const exact = VOICE_LANGS.find(([c]) => c.toLowerCase() === nav.toLowerCase());
-  if (exact) return exact[0];
-  const prefix = VOICE_LANGS.find(([c]) => c.split("-")[0] === nav.split("-")[0]);
-  return prefix ? prefix[0] : "en-US";
+  /* Browser UI language is a poor proxy for the language someone speaks — plenty of
+     Turkish speakers run Chrome in English. Only trust the locale when it is not
+     English; otherwise start on Turkish, which the picker can override. */
+  const nav = (navigatorLanguage || "");
+  if (nav && !/^en\b/i.test(nav)) {
+    const exact = VOICE_LANGS.find(([c]) => c.toLowerCase() === nav.toLowerCase());
+    if (exact) return exact[0];
+    const prefix = VOICE_LANGS.find(([c]) => c.split("-")[0] === nav.split("-")[0]);
+    if (prefix) return prefix[0];
+  }
+  return "tr-TR";
 }
 
 /* ───────────────────────── in-browser Whisper helpers ───────────────────────── */
