@@ -180,15 +180,24 @@ export async function localTranscriber(model, onProgress = () => {}) {
       if (env.backends?.onnx?.webgpu) env.backends.onnx.webgpu.logLevel = "error";
       if (env.backends?.onnx) env.backends.onnx.logSeverityLevel = 3;
       _whisperProgress(gpu ? "Downloading speech model…" : "Loading speech model on processor (may be slow)…", 0);
+      let lastProgressAt = Date.now();
       const progress_callback = (p) => {
         if (p.status === "progress") {
+          lastProgressAt = Date.now();
           const pct = Math.min(100, Math.round(p.progress ?? 0));
           const file = p.file ? ` (${p.file.split("/").pop()})` : "";
           _whisperProgress(`${gpu ? "Downloading" : "Loading"}${file} ${pct}%`);
         } else if (p.status === "download") {
+          lastProgressAt = Date.now();
           _whisperProgress(`Downloading ${p.file ? p.file.split("/").pop() : "model files"}…`);
         }
       };
+      /* Downloads finish at 100% well before the WebGPU/WASM session is actually ready — ONNX
+       * Runtime spends the next 10-40s compiling shaders / building the graph with no progress
+       * events at all. Without this, the UI looks frozen right after the last download tick. */
+      const compileHint = setInterval(() => {
+        if (Date.now() - lastProgressAt > 3000) _whisperProgress(`Preparing the model for your ${gpu ? "GPU" : "processor"} (first run only, up to a minute)…`);
+      }, 3000);
       /* fp16 encoder halves memory vs fp32; q4 decoder keeps it small. Falls back to q4+q4 on OOM. */
       const onGPU = { device: "webgpu", dtype: { encoder_model: "fp16", decoder_model_merged: "q4" }, progress_callback };
       const onGPU_q4 = { device: "webgpu", dtype: "q4", progress_callback };
@@ -223,6 +232,7 @@ export async function localTranscriber(model, onProgress = () => {}) {
         console.log = oldLog;
         console.warn = oldWarn;
         console.info = oldInfo;
+        clearInterval(compileHint);
       }
       transcriberModel = model;
     } catch (e) {

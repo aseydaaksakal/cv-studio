@@ -847,7 +847,8 @@ function startWhisperPreload() {
   if (whisperPreloadStarted || settings.engine !== "local") return;
   whisperPreloadStarted = true;
   import("./engines.js").then(({ localTranscriber, localWhisperId }) => {
-    localTranscriber(localWhisperId(settings.localwhisper), (msg) => micStatus(msg)).catch((e) => {
+    /* Don't stomp on "Recording…" once the user has actually started talking. */
+    localTranscriber(localWhisperId(settings.localwhisper), (msg) => { if (!listening) micStatus(msg); }).catch((e) => {
       console.error("Whisper pre-load failed:", e);
       whisperPreloadStarted = false;
     });
