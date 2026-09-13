@@ -168,16 +168,32 @@ export async function localTranscriber(model, onProgress = () => {}) {
           _whisperProgress(`Downloading ${p.file ? p.file.split("/").pop() : "model files"}…`);
         }
       };
-      const onGPU = { device: "webgpu", dtype: { encoder_model: "fp32", decoder_model_merged: "q4" }, progress_callback };
+      /* fp16 encoder halves memory vs fp32; q4 decoder keeps it small. Falls back to q4+q4 on OOM. */
+      const onGPU = { device: "webgpu", dtype: { encoder_model: "fp16", decoder_model_merged: "q4" }, progress_callback };
+      const onGPU_q4 = { device: "webgpu", dtype: "q4", progress_callback };
       const onCPU = { device: "wasm", dtype: "q8", progress_callback };
       const oldLog = console.log, oldWarn = console.warn, oldInfo = console.info;
       console.log = console.warn = console.info = () => {};
       try {
-        try {
-          transcriber = await pipeline("automatic-speech-recognition", model, gpu ? onGPU : onCPU);
-        } catch (e) {
-          if (!gpu) throw e;
-          _whisperProgress("No usable GPU — loading Whisper for the processor instead…", 0);
+        if (gpu) {
+          try {
+            transcriber = await pipeline("automatic-speech-recognition", model, onGPU);
+          } catch (e) {
+            const isOOM = e instanceof RangeError || /buffer|memory|allocation/i.test(String(e.message));
+            if (!isOOM) throw e;
+            /* fp16 encoder still too large — try fully quantized q4 on GPU */
+            _whisperProgress("Memory too low for fp16 — trying q4 quantized on GPU…", 0);
+            try {
+              transcriber = await pipeline("automatic-speech-recognition", model, onGPU_q4);
+            } catch (e2) {
+              /* GPU q4 also failed — fall back to CPU with smaller model */
+              const smallModel = LOCAL_WHISPER[1][0];
+              _whisperProgress("GPU out of memory — switching to Whisper small on CPU…", 0);
+              transcriber = await pipeline("automatic-speech-recognition", smallModel, onCPU);
+              model = smallModel;
+            }
+          }
+        } else {
           transcriber = await pipeline("automatic-speech-recognition", model, onCPU);
         }
       } finally {
