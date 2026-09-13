@@ -244,9 +244,19 @@ function startBrowser() {
   const lang = defaultVoiceLang(settings.voicelang, navigator.language);
   const langLabel = (VOICE_LANGS.find(([c]) => c === lang) || [, lang])[1];
   /* Whatever the user already typed stays put; speech is appended to it. */
-  const baseText = $("#ask").value.trim();
+  let baseText = $("#ask").value.trim();
   let finalText = "";
+  /* Last value this recogniser wrote. If the box no longer matches it the user
+     edited or cleared it mid-dictation, so the accumulated transcript has to be
+     abandoned — otherwise the next result resurrects the text they just deleted. */
+  let lastWritten = $("#ask").value;
   recogStopping = false;
+
+  const writeBox = (spoken) => {
+    if ($("#ask").value !== lastWritten) { baseText = $("#ask").value.trim(); finalText = spoken; }
+    lastWritten = [baseText, spoken].filter(Boolean).join(" ");
+    $("#ask").value = lastWritten;
+  };
 
   recognizer = new Recognition();
   recognizer.lang = lang;
@@ -263,7 +273,7 @@ function startBrowser() {
       if (r.isFinal) finalText += r[0].transcript;
       else interim += r[0].transcript;
     }
-    $("#ask").value = [baseText, (finalText + interim).replace(/\s+/g, " ").trim()].filter(Boolean).join(" ");
+    writeBox((finalText + interim).replace(/\s+/g, " ").trim());
   };
   recognizer.onerror = (e) => {
     /* no-speech and aborted fire during normal pauses; onend restarts us. */
@@ -335,8 +345,11 @@ async function startAutoLingual() {
   const hangoverSamples = (VAD.hangoverMs / 1000) * VAD.rate;
   const minSpeechSamples = (VAD.minSpeechMs / 1000) * VAD.rate;
   const maxSegmentSamples = (VAD.maxSegmentMs / 1000) * VAD.rate;
-  const baseText = $("#ask").value.trim();
+  let baseText = $("#ask").value.trim();
   let settled = "";
+  /* See writeBox in startBrowser: if the user clears the box between phrases the
+     accumulated transcript must be dropped rather than re-written over their edit. */
+  let lastWritten = $("#ask").value;
 
   const flush = () => {
     if (segmentSamples < minSpeechSamples) { segment = []; segmentSamples = 0; return; }
@@ -351,8 +364,10 @@ async function startAutoLingual() {
     try {
       const { text, language } = await localTranscribeChunk(model, pcm, (msg) => { if (!settled && !autoStopping) micStatus(msg); });
       if (text) {
+        if ($("#ask").value !== lastWritten) { baseText = $("#ask").value.trim(); settled = ""; }
         settled = (settled ? settled + " " : "") + text;
-        $("#ask").value = [baseText, settled].filter(Boolean).join(" ");
+        lastWritten = [baseText, settled].filter(Boolean).join(" ");
+        $("#ask").value = lastWritten;
       }
       if (!autoStopping) micStatus(`Listening… ${language ? whisperLangName(language) + " detected · " : ""}click again to stop.`);
     } catch (e) {

@@ -72,6 +72,16 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 export const EMPTY_THEME = () => ({
   nameColor: "", headingColor: "", textColor: "", accentColor: "",
   fontScale: 1, lineSpacing: 1, sectionGap: 1,
+  headingRule: true,   // the line under each section heading
+});
+
+/* Section headings used to be English literals in the renderer, so "translate the
+ * page" left them in English and "rename LANGUAGES to DİLLER" was impossible.
+ * They live on the document now, which makes them ordinary editable fields. */
+export const DEFAULT_LABELS = () => ({
+  summary: "Summary", experience: "Work experience", skills: "Skills",
+  projects: "Projects", certifications: "Certifications",
+  education: "Education", languages: "Languages",
 });
 
 export const EMPTY = () => ({
@@ -83,6 +93,7 @@ export const EMPTY = () => ({
   certifications: [],
   education: [],
   languages: [],
+  labels: DEFAULT_LABELS(),
   theme: EMPTY_THEME(),
 });
 
@@ -95,7 +106,8 @@ export const SCHEMA_DOC = `{
   "certifications": [{"name": "", "issuer": "", "year": ""}],
   "education": [{"degree": "", "school": "", "year": ""}],
   "languages": [{"name": "", "level": ""}],
-  "theme": {"nameColor": "", "headingColor": "", "textColor": "", "accentColor": "", "fontScale": 1, "lineSpacing": 1, "sectionGap": 1}
+  "labels": {"summary": "Summary", "experience": "Work experience", "skills": "Skills", "projects": "Projects", "certifications": "Certifications", "education": "Education", "languages": "Languages"},
+  "theme": {"nameColor": "", "headingColor": "", "textColor": "", "accentColor": "", "fontScale": 1, "lineSpacing": 1, "sectionGap": 1, "headingRule": true}
 }`;
 
 export const SAMPLE = {
@@ -127,7 +139,21 @@ export function normalize(cv) {
   out.experience = out.experience.map((e) => ({ title: "", company: "", location: "", start: "", end: "", ...e, bullets: Array.isArray(e.bullets) ? e.bullets.map(String) : [] }));
   out.skills = out.skills.map((s) => ({ group: "", ...s, items: Array.isArray(s.items) ? s.items.map(String) : String(s.items || "").split(",").map((x) => x.trim()).filter(Boolean) }));
   out.summary = String(out.summary || "");
+  out.labels = normalizeLabels(cv?.labels);
   out.theme = normalizeTheme(cv?.theme);
+  return out;
+}
+
+/* Headings are rendered as text, so only the known keys are kept and each value
+   is coerced to a string; a blank value falls back to the English default. */
+export function normalizeLabels(labels) {
+  const base = DEFAULT_LABELS();
+  const out = {};
+  for (const k of Object.keys(base)) {
+    const v = labels && typeof labels === "object" ? labels[k] : undefined;
+    const s = String(v ?? "").trim();
+    out[k] = s || base[k];
+  }
   return out;
 }
 
@@ -154,6 +180,7 @@ export function normalizeTheme(theme) {
     fontScale: clampScale(t.fontScale, 0.7, 1.6),
     lineSpacing: clampScale(t.lineSpacing, 0.8, 2),
     sectionGap: clampScale(t.sectionGap, 0.4, 2.5),
+    headingRule: t.headingRule !== false && t.headingRule !== "false",
   };
 }
 
@@ -220,7 +247,15 @@ Appearance paths — use these for any instruction about colour, size or spacing
   theme.fontScale      text size multiplier, 0.7-1.6, 1 is normal   e.g. bigger text -> 1.15
   theme.lineSpacing    line height multiplier, 0.8-2, 1 is normal
   theme.sectionGap     gap between sections, 0.4-2.5, 1 is normal   e.g. less whitespace -> 0.7
+  theme.headingRule    true/false — the horizontal line under every section heading.
+                       "remove the line under Projects" means {"op":"set","path":"theme.headingRule","value":false},
+                       NOT deleting the projects section.
 Colours must be a CSS colour name or hex (red, #c00, #cc0000). To undo a colour, set it to "".
+Section heading text — rename or translate headings here, never leave them in the old language:
+  labels.summary, labels.experience, labels.skills, labels.projects, labels.certifications, labels.education, labels.languages
+  e.g. rename LANGUAGES to DİLLER -> {"op":"set","path":"labels.languages","value":"Diller"}
+  When translating the CV, translate these labels too.
+The photo is not part of this JSON. If asked to add one, reply {"ops":[],"note":"<tell the user to use the Photo checkbox in the toolbar>"}. If asked to remove it, do the same and say the same.
 Rules: emit the fewest operations that fulfil the instruction; never invent employers, dates, numbers or credentials; keep the CV's language unless asked to translate; when translating, set each text field with its translation; when asked to shorten, delete the weakest bullets or shorten the summary. If the instruction is unclear or not about the CV, reply {"ops":[],"note":"<why>"}. No prose, no markdown fences.`;
 
 const LIST_KEYS = new Set(["links", "bullets", "items", "experience", "skills", "projects", "certifications", "education", "languages"]);
@@ -233,7 +268,10 @@ const THEME_ALIASES = { color: "nameColor", namecolour: "nameColor", namecolor: 
   textcolour: "textColor", textcolor: "textColor", accentcolour: "accentColor", accentcolor: "accentColor",
   fontsize: "fontScale", font_size: "fontScale", fontscale: "fontScale", scale: "fontScale",
   linespacing: "lineSpacing", lineheight: "lineSpacing", spacing: "lineSpacing",
-  sectiongap: "sectionGap", sectionspacing: "sectionGap", margin: "sectionGap" };
+  sectiongap: "sectionGap", sectionspacing: "sectionGap", margin: "sectionGap",
+  /* normalizePath lowercases every segment, so each camelCase key needs its
+     lowercase spelling mapped back or the write lands on a key nothing reads. */
+  headingrule: "headingRule", headingline: "headingRule", rule: "headingRule", divider: "headingRule" };
 const OP_ALIASES = { set: "set", update: "set", replace: "set", edit: "set", change: "set", write: "set",
   delete: "delete", remove: "delete", clear: "delete", del: "delete",
   append: "append", add: "append", push: "append", insert: "insert", move: "move", reorder: "move" };
@@ -289,7 +327,10 @@ export function applyOps(cv, ops) {
       const [parent, key] = resolve(next, op.path);
       if (parent == null || key === "" || key == null) throw new Error(`no such field: ${raw?.path}`);
       if (op.op === "set") {
-        if (LIST_KEYS.has(key) && !Array.isArray(op.value)) throw new Error(`${key} needs a list`);
+        /* "languages" is a list at the top level but a heading string under labels,
+           so only enforce the list shape outside labels and theme. */
+        const inSettings = /^(labels|theme)\./.test(op.path);
+        if (!inSettings && LIST_KEYS.has(key) && !Array.isArray(op.value)) throw new Error(`${key} needs a list`);
         parent[key] = op.value;
       } else if (op.op === "delete") {
         if (Array.isArray(parent) && typeof key === "number") { if (key >= parent.length) throw new Error("index out of range"); parent.splice(key, 1); }
@@ -360,7 +401,7 @@ export const BASE_CSS = (serif, theme = EMPTY_THEME()) => {
   .pic { width:64pt; height:64pt; border-radius:50%; object-fit:cover; flex:none; }
   .name { font-size:${pt(serif ? 19 : 18)}; line-height:1.15;${t.nameColor ? ` color:${t.nameColor};` : ""} }
   .role { font-weight:bold; margin-top:2pt;${t.accentColor ? ` color:${t.accentColor};` : ""} } .contact { margin-top:3pt; }
-  h2 { font-size:${pt(serif ? 9.6 : 9.2)}; letter-spacing:.02em; margin:0 0 6pt; padding-bottom:3pt; border-bottom:.6pt solid ${t.headingColor || "#000"}; text-transform:uppercase;${t.headingColor ? ` color:${t.headingColor};` : ""} }
+  h2 { font-size:${pt(serif ? 9.6 : 9.2)}; letter-spacing:.02em; margin:0 0 6pt; padding-bottom:3pt; ${t.headingRule ? `border-bottom:.6pt solid ${t.headingColor || "#000"};` : "border-bottom:none;"} text-transform:uppercase;${t.headingColor ? ` color:${t.headingColor};` : ""} }
   .sec { margin-bottom:${(12 * t.sectionGap).toFixed(1)}pt; } p { margin:0 0 5pt; } .tight p { margin-bottom:4pt; }
   .job { margin-bottom:${(6 * t.sectionGap).toFixed(1)}pt; } .job .jh { display:flex; justify-content:space-between; gap:8pt; } .job .jh b { font-weight:bold; }
   ul { margin:2pt 0 0 12pt; padding:0; } li { margin-bottom:1.5pt; }
@@ -372,30 +413,32 @@ export const ATS_CSS = `@page { size:A4; margin:16mm; } body { font-family: Aria
 
 export function renderStyled(cv, serif, { photo = null } = {}) {
   const b = cv.basics;
+  const L = normalizeLabels(cv.labels);
   const contact = lineJoin([b.location, b.phone, b.email, ...b.links], "  |  ");
   const head = `<div class="hdr">${photo ? `<img class="pic" src="${photo}" alt="">` : ""}<div><div class="name">${esc(b.name)}</div><div class="role">${esc(b.title)}</div><div class="contact">${contact}</div></div></div>`;
   let h = head;
-  if (cv.summary) h += `<div class="sec"><h2>Summary</h2><p>${esc(cv.summary)}</p></div>`;
+  if (cv.summary) h += `<div class="sec"><h2>${esc(L.summary)}</h2><p>${esc(cv.summary)}</p></div>`;
   if (cv.experience.length) {
-    h += `<div class="sec"><h2>Work experience</h2>` + cv.experience.map((e) => `<div class="job"><div class="jh"><span><b>${esc(e.title)}</b>${e.company ? " — " + esc(e.company) : ""}${e.location ? ", " + esc(e.location) : ""}</span><span>${lineJoin([e.start, e.end], " – ")}</span></div>${e.bullets.length ? "<ul>" + e.bullets.map((x) => `<li>${esc(x)}</li>`).join("") + "</ul>" : ""}</div>`).join("") + `</div>`;
+    h += `<div class="sec"><h2>${esc(L.experience)}</h2>` + cv.experience.map((e) => `<div class="job"><div class="jh"><span><b>${esc(e.title)}</b>${e.company ? " — " + esc(e.company) : ""}${e.location ? ", " + esc(e.location) : ""}</span><span>${lineJoin([e.start, e.end], " – ")}</span></div>${e.bullets.length ? "<ul>" + e.bullets.map((x) => `<li>${esc(x)}</li>`).join("") + "</ul>" : ""}</div>`).join("") + `</div>`;
   }
-  if (cv.skills.length) h += `<div class="sec"><h2>Skills</h2>` + cv.skills.map((s) => `<p><b>${esc(s.group)}:</b> ${s.items.map(esc).join(" <span class='dot'>·</span> ")}</p>`).join("") + `</div>`;
-  if (cv.projects.length) h += `<div class="sec tight"><h2>Projects</h2>` + cv.projects.map((p) => `<p><b>${esc(p.name)}</b> — ${esc(p.description)}${p.link ? " " + esc(p.link) : ""}</p>`).join("") + `</div>`;
-  if (cv.certifications.length) h += `<div class="sec tight"><h2>Certifications</h2>` + cv.certifications.map((c) => `<p><b>${esc(c.name)}</b> / ${lineJoin([c.issuer, c.year], " / ")}</p>`).join("") + `</div>`;
-  if (cv.education.length) h += `<div class="sec tight"><h2>Education</h2>` + cv.education.map((e) => `<p><b>${esc(e.school)}</b> — ${lineJoin([e.degree, e.year], " / ")}</p>`).join("") + `</div>`;
-  if (cv.languages.length) h += `<div class="sec"><h2>Languages</h2><p>${cv.languages.map((l) => `<b>${esc(l.name)}</b> / ${esc(l.level)}`).join(" <span class='dot'>·</span> ")}</p></div>`;
+  if (cv.skills.length) h += `<div class="sec"><h2>${esc(L.skills)}</h2>` + cv.skills.map((s) => `<p><b>${esc(s.group)}:</b> ${s.items.map(esc).join(" <span class='dot'>·</span> ")}</p>`).join("") + `</div>`;
+  if (cv.projects.length) h += `<div class="sec tight"><h2>${esc(L.projects)}</h2>` + cv.projects.map((p) => `<p><b>${esc(p.name)}</b> — ${esc(p.description)}${p.link ? " " + esc(p.link) : ""}</p>`).join("") + `</div>`;
+  if (cv.certifications.length) h += `<div class="sec tight"><h2>${esc(L.certifications)}</h2>` + cv.certifications.map((c) => `<p><b>${esc(c.name)}</b> / ${lineJoin([c.issuer, c.year], " / ")}</p>`).join("") + `</div>`;
+  if (cv.education.length) h += `<div class="sec tight"><h2>${esc(L.education)}</h2>` + cv.education.map((e) => `<p><b>${esc(e.school)}</b> — ${lineJoin([e.degree, e.year], " / ")}</p>`).join("") + `</div>`;
+  if (cv.languages.length) h += `<div class="sec"><h2>${esc(L.languages)}</h2><p>${cv.languages.map((l) => `<b>${esc(l.name)}</b> / ${esc(l.level)}`).join(" <span class='dot'>·</span> ")}</p></div>`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>${BASE_CSS(serif, cv.theme)}</style></head><body>${h}</body></html>`;
 }
 export function renderATS(cv) {
   const b = cv.basics;
+  const L = normalizeLabels(cv.labels);
   let h = `<h1>${esc(b.name)}</h1><p><b>${esc(b.title)}</b></p><p>${lineJoin([b.location, b.phone, b.email, ...b.links])}</p>`;
-  if (cv.summary) h += `<h2>Summary</h2><p>${esc(cv.summary)}</p>`;
-  if (cv.experience.length) h += `<h2>Work experience</h2>` + cv.experience.map((e) => `<p class="sub">${esc(e.title)}${e.company ? " — " + esc(e.company) : ""}</p><p>${lineJoin([e.location, [e.start, e.end].filter(Boolean).join(" – ")])}</p>${e.bullets.length ? "<ul>" + e.bullets.map((x) => `<li>${esc(x)}</li>`).join("") + "</ul>" : ""}`).join("");
-  if (cv.skills.length) h += `<h2>Skills</h2>` + cv.skills.map((s) => `<p><b>${esc(s.group)}:</b> ${s.items.map(esc).join(", ")}</p>`).join("");
-  if (cv.projects.length) h += `<h2>Projects</h2>` + cv.projects.map((p) => `<p><b>${esc(p.name)}</b> — ${esc(p.description)} ${esc(p.link)}</p>`).join("");
-  if (cv.certifications.length) h += `<h2>Certifications</h2>` + cv.certifications.map((c) => `<p>${lineJoin([c.name, c.issuer, c.year], ", ")}</p>`).join("");
-  if (cv.education.length) h += `<h2>Education</h2>` + cv.education.map((e) => `<p><b>${esc(e.degree)}</b> — ${lineJoin([e.school, e.year])}</p>`).join("");
-  if (cv.languages.length) h += `<h2>Languages</h2><p>${cv.languages.map((l) => `<b>${esc(l.name)}</b> / ${esc(l.level)}`).join(" · ")}</p>`;
+  if (cv.summary) h += `<h2>${esc(L.summary)}</h2><p>${esc(cv.summary)}</p>`;
+  if (cv.experience.length) h += `<h2>${esc(L.experience)}</h2>` + cv.experience.map((e) => `<p class="sub">${esc(e.title)}${e.company ? " — " + esc(e.company) : ""}</p><p>${lineJoin([e.location, [e.start, e.end].filter(Boolean).join(" – ")])}</p>${e.bullets.length ? "<ul>" + e.bullets.map((x) => `<li>${esc(x)}</li>`).join("") + "</ul>" : ""}`).join("");
+  if (cv.skills.length) h += `<h2>${esc(L.skills)}</h2>` + cv.skills.map((s) => `<p><b>${esc(s.group)}:</b> ${s.items.map(esc).join(", ")}</p>`).join("");
+  if (cv.projects.length) h += `<h2>${esc(L.projects)}</h2>` + cv.projects.map((p) => `<p><b>${esc(p.name)}</b> — ${esc(p.description)} ${esc(p.link)}</p>`).join("");
+  if (cv.certifications.length) h += `<h2>${esc(L.certifications)}</h2>` + cv.certifications.map((c) => `<p>${lineJoin([c.name, c.issuer, c.year], ", ")}</p>`).join("");
+  if (cv.education.length) h += `<h2>${esc(L.education)}</h2>` + cv.education.map((e) => `<p><b>${esc(e.degree)}</b> — ${lineJoin([e.school, e.year])}</p>`).join("");
+  if (cv.languages.length) h += `<h2>${esc(L.languages)}</h2><p>${cv.languages.map((l) => `<b>${esc(l.name)}</b> / ${esc(l.level)}`).join(" · ")}</p>`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>${ATS_CSS}</style></head><body>${h}</body></html>`;
 }
 export function plainText(cv) {

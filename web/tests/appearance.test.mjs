@@ -9,7 +9,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EMPTY, SAMPLE, applyOps, normalize, normalizePath, normalizeTheme, renderStyled, safeColour } from "../core.js";
+import { EMPTY, SAMPLE, applyOps, normalize, normalizeLabels, normalizePath, normalizeTheme, renderATS, renderStyled, safeColour } from "../core.js";
 
 const render = (cv) => renderStyled(normalize(cv), false);
 
@@ -72,6 +72,63 @@ test("an empty CV and a CV saved before themes existed both render", () => {
   const html = render(legacy);
   assert.match(html, /Elif Demir/);
   assert.equal(normalize(legacy).theme.fontScale, 1);
+});
+
+test("every theme key survives a round trip through normalizePath", () => {
+  /* normalizePath lowercases each segment, so a camelCase key with no lowercase
+     alias silently writes to a field nothing reads — headingRule shipped broken
+     exactly this way. Prove every key set by its real name actually lands. */
+  const probe = { nameColor: "red", headingColor: "blue", textColor: "green", accentColor: "teal",
+    fontScale: 1.3, lineSpacing: 1.4, sectionGap: 0.8, headingRule: false };
+  for (const [key, value] of Object.entries(probe)) {
+    const { cv, skipped } = applyOps(normalize(SAMPLE), [{ op: "set", path: `theme.${key}`, value }]);
+    assert.deepEqual(skipped, [], `theme.${key} was skipped`);
+    assert.equal(cv.theme[key], value, `theme.${key} did not survive normalizePath`);
+  }
+});
+
+/* ── section headings ───────────────────────────────────────────────────────── */
+
+test("renaming a section heading changes what is printed", () => {
+  const { cv, skipped } = applyOps(normalize(SAMPLE), [{ op: "set", path: "labels.languages", value: "Diller" }]);
+  assert.deepEqual(skipped, []);
+  const html = render(cv);
+  assert.match(html, /<h2>Diller<\/h2>/);
+  assert.doesNotMatch(html, /<h2>Languages<\/h2>/);
+});
+
+test("translating the CV translates the headings too, in both renderers", () => {
+  const { cv } = applyOps(normalize(SAMPLE), [
+    { op: "set", path: "labels.summary", value: "Özet" },
+    { op: "set", path: "labels.experience", value: "İş Deneyimi" },
+    { op: "set", path: "labels.education", value: "Eğitim" },
+  ]);
+  for (const html of [render(cv), renderATS(cv)]) {
+    assert.match(html, /Özet/);
+    assert.match(html, /İş Deneyimi/);
+    assert.doesNotMatch(html, /Work experience/);
+  }
+});
+
+test("a blank or unknown label falls back to the English default", () => {
+  assert.equal(normalizeLabels({ summary: "   " }).summary, "Summary");
+  assert.equal(normalizeLabels({ nonsense: "x" }).languages, "Languages");
+  assert.equal(normalizeLabels(null).skills, "Skills");
+});
+
+test("heading text is escaped, not injected as markup", () => {
+  const { cv } = applyOps(normalize(SAMPLE), [{ op: "set", path: "labels.skills", value: "<script>alert(1)</script>" }]);
+  const html = render(cv);
+  assert.doesNotMatch(html, /<script>alert/);
+  assert.match(html, /&lt;script&gt;/);
+});
+
+test("'remove the line under the headings' hides the rule instead of deleting a section", () => {
+  const before = normalize(SAMPLE);
+  const { cv } = applyOps(before, [{ op: "set", path: "theme.headingRule", value: false }]);
+  assert.equal(cv.projects.length, before.projects.length, "the section itself must survive");
+  assert.match(render(cv), /border-bottom:none/);
+  assert.match(render(before), /border-bottom:\.6pt solid/);
 });
 
 /* ── the content commands the owner listed, driven through applyOps ─────────── */
