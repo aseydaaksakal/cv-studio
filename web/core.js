@@ -115,9 +115,47 @@ export function normalize(cv) {
 }
 
 export function extractJSON(text) {
-  const start = text.indexOf("{"); const end = text.lastIndexOf("}");
+  const cleaned = String(text ?? "").replace(/```(?:json)?/gi, "");
+  const start = cleaned.indexOf("{"); const end = cleaned.lastIndexOf("}");
   if (start < 0 || end < 0) throw new Error("The model did not return JSON.");
-  return JSON.parse(text.slice(start, end + 1));
+  const raw = cleaned.slice(start, end + 1);
+  for (const candidate of jsonRepairs(raw)) {
+    try { return JSON.parse(candidate); } catch { /* try the next repair */ }
+  }
+  throw new Error("The model returned JSON this app could not repair. Try a larger model in settings, or split the instruction into smaller steps.");
+}
+
+/* Small local models routinely drop the comma between two list items, leave a
+ * trailing comma, or stop mid-object when they run out of tokens. Rather than
+ * failing the whole edit, yield progressively bolder repairs and take the first
+ * one that parses. */
+function* jsonRepairs(raw) {
+  yield raw;
+  const noTrailing = raw.replace(/,\s*([}\]])/g, "$1");
+  yield noTrailing;
+  const withCommas = noTrailing
+    .replace(/([}\]"]|\d|true|false|null)(\s*\n\s*)(["{[])/g, "$1,$2$3")
+    .replace(/([}\]])(\s*)([{[])/g, "$1,$2$3");
+  yield withCommas;
+  yield withCommas.replace(/,\s*([}\]])/g, "$1");
+  for (const base of [withCommas, noTrailing, raw]) yield closeOpenStructures(base);
+}
+
+/* Balance a truncated reply: close any string, object or array still open. */
+function closeOpenStructures(s) {
+  const stack = []; let inString = false, escaped = false;
+  for (const ch of s) {
+    if (escaped) { escaped = false; continue; }
+    if (ch === "\\") { escaped = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{" || ch === "[") stack.push(ch);
+    else if (ch === "}" || ch === "]") stack.pop();
+  }
+  let out = s.replace(/,\s*$/, "");
+  if (inString) out += '"';
+  while (stack.length) out += stack.pop() === "{" ? "}" : "]";
+  return out;
 }
 
 export const SYSTEM_PARSE = `You convert CV/résumé text into JSON. Reply with ONLY a JSON object matching this shape, no prose, no markdown fences:\n${SCHEMA_DOC}\nRules: keep the original language; keep every fact, date, number and name exactly; never invent anything; if a field is unknown use "" or []; put unlabelled contact lines into basics.links.`;

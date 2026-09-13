@@ -22,6 +22,21 @@ test("extractJSON finds the object inside prose and fences", () => {
   assert.throws(() => extractJSON("no json here"), /did not return JSON/);
 });
 
+test("extractJSON repairs the JSON small local models actually emit", () => {
+  // Missing comma between two array items — the failure seen on "ATS-friendly".
+  assert.deepEqual(
+    extractJSON('{"ops":[{"op":"set","path":"summary","value":"a"}{"op":"delete","path":"basics.phone"}]}'),
+    { ops: [{ op: "set", path: "summary", value: "a" }, { op: "delete", path: "basics.phone" }] });
+  // Trailing comma before the closing bracket.
+  assert.deepEqual(extractJSON('{"ops":[{"op":"set","path":"summary","value":"a"},],"note":"ok"}'),
+    { ops: [{ op: "set", path: "summary", value: "a" }], note: "ok" });
+  // Missing comma between siblings on separate lines.
+  assert.deepEqual(extractJSON('{\n"a": 1\n"b": 2\n}'), { a: 1, b: 2 });
+  // Reply truncated mid-object when the model ran out of tokens.
+  assert.deepEqual(extractJSON('{"ops":[{"op":"set","path":"summary","value":"half a sentence"}'),
+    { ops: [{ op: "set", path: "summary", value: "half a sentence" }] });
+});
+
 test("applyField splits list fields and sets scalars", () => {
   const cv = normalize(SAMPLE);
   applyField(cv, "basics.links", "a.com, b.com ,, c.com");

@@ -206,12 +206,13 @@
     <label id="desktopurl-row" hidden>Desktop backend URL <input type="text" id="desktopurl" placeholder="http://localhost:8000"></label>
     <label>Voice engine
       <select id="engine">
+        <option value="browser">Live in this browser — words appear as you speak, no download, no key</option>
         <option value="local">In this browser — Whisper, detects the language, no key</option>
         <option value="desktop">CV Studio desktop backend on my machine or tunnel — faster-whisper</option>
-        <option value="browser">Browser speech recognition — instant, browser's language only</option>
         <option value="whisper">Whisper API (OpenAI) — your key</option>
       </select>
     </label>
+    <label id="voicelang-row">Speaking language <select id="voicelang"></select></label>
     <label id="localwhisper-row">Local Whisper size <select id="localwhisper"></select></label>
     <label id="sttkey-row" hidden>OpenAI key for Whisper API <input type="password" id="sttkey" autocomplete="off"></label>
     <p class="muted small" id="gpu-note"></p>
