@@ -262,8 +262,20 @@ export async function detectLanguage(t, pcm) {
   return probe.detected || null;
 }
 
-/** Transcribe a recording. Returns { text, language }; language is detected from the audio, null if unknown. */
+/* The ORT session backing the transcriber cannot run two inferences at once
+ * ("Session already started" / "Session mismatch"). A timed-out call's promise
+ * is abandoned by the caller but keeps running underneath, so a retry while it
+ * is still in flight used to collide with it. Chain every call through this
+ * lock so they always run one at a time, in order. */
+let transcribeChain = Promise.resolve();
 export async function localTranscribe(model, blob, onProgress) {
+  const run = transcribeChain.then(() => localTranscribeInner(model, blob, onProgress));
+  /* Swallow rejection in the chain itself so one failed call doesn't wedge the next. */
+  transcribeChain = run.catch(() => {});
+  return run;
+}
+
+async function localTranscribeInner(model, blob, onProgress) {
   const t = await localTranscriber(model, onProgress);
   const pcm = await blobToPCM(blob);
   /* Detection is a bonus: if it fails, transcribe anyway rather than losing the recording.
