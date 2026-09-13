@@ -1,6 +1,6 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
 import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, VOICE_LANGS, applyField, applyOps, applyTheme, clearSelectedSessions, copySession, createSession, defaultVoiceLang, deleteSession, deleteSessionsBatch, download, extractJSON, exportSessionsAsJSON, getActiveSession, getEffectiveTheme, getSelectedSessions, getSession, getSystemTheme, getTheme, looksDestructive, listSessions, normalize, plainText, renameSessionsBatch, renderATS, renderStyled, setActiveSession, setSelectedSessions, setSessionNotes, setTheme, updateSession, whisperLangName } from "./core.js";
-import { LOCAL_MODELS, LOCAL_WHISPER, UnknownModelError, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localWhisperId, ollamaModels, pickForBudget, probeModel, webgpuUsable } from "./engines.js";
+import { LOCAL_MODELS, LOCAL_WHISPER, UnknownModelError, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localTranscribeChunk, localWhisperId, ollamaModels, pickForBudget, probeModel, webgpuUsable } from "./engines.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
 
@@ -214,7 +214,8 @@ const micStatus = (t) => { $("#mic-status").textContent = t; };
 const setLive = (on) => { listening = on; $("#btn-mic").classList.toggle("live", on); };
 
 function toggleMic() {
-  if (listening) { stopBrowser(); if (recorder && recorder.state === "recording") recorder.stop(); return; }
+  if (listening) { stopBrowser(); stopAutoLingual(); if (recorder && recorder.state === "recording") recorder.stop(); return; }
+  if (settings.engine === "auto") return startAutoLingual();
   if (settings.engine === "browser") return startBrowser();
   const engines = { whisper: transcribeWithAPI, desktop: transcribeWithDesktop, local: transcribeLocally };
   const chosen = engines[settings.engine] || transcribeLocally;
@@ -279,6 +280,110 @@ function startBrowser() {
     $("#ask").focus();
   };
   recognizer.start();
+}
+
+/* ── any-language listener ────────────────────────────────────────────────────
+ * Browser speech recognition is instant but has to be told the language up front —
+ * it cannot detect one, so it cannot follow a speaker who switches languages.
+ * Whisper detects the language itself but only works on a finished clip.
+ *
+ * So: watch the microphone level, cut a segment whenever the speaker pauses, and
+ * transcribe each segment on its own. Every phrase gets its own language, which is
+ * what makes switching languages mid-dictation work. Text lands a beat after each
+ * phrase rather than word by word — the price of not being told the language.
+ */
+const VAD = {
+  rate: 16000,
+  speechLevel: 0.012,   // RMS above this counts as speech
+  hangoverMs: 700,      // silence this long closes the phrase
+  minSpeechMs: 350,     // shorter blips are noise, not words
+  maxSegmentMs: 14000,  // flush long monologues so text keeps flowing
+};
+let autoCtx = null, autoStream = null, autoNode = null, autoSource = null, autoStopping = false;
+
+function stopAutoLingual() {
+  if (!autoCtx) return;
+  autoStopping = true;
+  try { autoNode?.disconnect(); autoSource?.disconnect(); } catch { /* already torn down */ }
+  try { autoStream?.getTracks().forEach((t) => t.stop()); } catch { /* already stopped */ }
+  try { autoCtx.close(); } catch { /* already closed */ }
+  autoCtx = autoStream = autoNode = autoSource = null;
+  setLive(false);
+  micStatus($("#ask").value.trim() ? "Check the text, then press Enter." : "");
+  $("#ask").focus();
+}
+
+async function startAutoLingual() {
+  try { autoStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch { micStatus("Microphone blocked — allow it in the address bar."); return; }
+
+  autoStopping = false;
+  autoCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: VAD.rate });
+  autoSource = autoCtx.createMediaStreamSource(autoStream);
+  /* ScriptProcessor is deprecated but is the one PCM tap that needs no separate
+     worklet file, which keeps this app a no-build-step static site. */
+  autoNode = autoCtx.createScriptProcessor(4096, 1, 1);
+
+  const model = fastWhisperFor(settings.localwhisper);
+  let segment = [], segmentSamples = 0, silenceSamples = 0, speaking = false;
+  const hangoverSamples = (VAD.hangoverMs / 1000) * VAD.rate;
+  const minSpeechSamples = (VAD.minSpeechMs / 1000) * VAD.rate;
+  const maxSegmentSamples = (VAD.maxSegmentMs / 1000) * VAD.rate;
+  const baseText = $("#ask").value.trim();
+  let settled = "";
+
+  const flush = () => {
+    if (segmentSamples < minSpeechSamples) { segment = []; segmentSamples = 0; return; }
+    const pcm = new Float32Array(segmentSamples);
+    let at = 0; for (const b of segment) { pcm.set(b, at); at += b.length; }
+    segment = []; segmentSamples = 0;
+    transcribeSegment(pcm);
+  };
+
+  const transcribeSegment = async (pcm) => {
+    try {
+      const { text, language } = await localTranscribeChunk(model, pcm, (msg) => { if (!settled) micStatus(msg); });
+      if (autoStopping && !text) return;
+      if (!text) return;
+      settled = (settled ? settled + " " : "") + text;
+      $("#ask").value = [baseText, settled].filter(Boolean).join(" ");
+      micStatus(`Listening… ${language ? whisperLangName(language) + " detected · " : ""}click again to stop.`);
+    } catch (e) {
+      console.error("Segment transcription failed:", e);
+      micStatus("Could not transcribe that phrase — still listening.");
+    }
+  };
+
+  autoNode.onaudioprocess = (e) => {
+    if (autoStopping) return;
+    const input = e.inputBuffer.getChannelData(0);
+    let sum = 0; for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
+    const rms = Math.sqrt(sum / input.length);
+
+    if (rms >= VAD.speechLevel) {
+      speaking = true; silenceSamples = 0;
+      segment.push(new Float32Array(input)); segmentSamples += input.length;
+    } else if (speaking) {
+      /* Keep the tail of the pause in the clip: cutting on the exact sample
+         clips the last consonant and Whisper drops the final word. */
+      segment.push(new Float32Array(input)); segmentSamples += input.length;
+      silenceSamples += input.length;
+      if (silenceSamples >= hangoverSamples) { speaking = false; silenceSamples = 0; flush(); }
+    }
+    if (segmentSamples >= maxSegmentSamples) { speaking = false; silenceSamples = 0; flush(); }
+  };
+
+  autoSource.connect(autoNode);
+  autoNode.connect(autoCtx.destination);
+  setLive(true);
+  micStatus("Listening in any language… click again to stop.");
+}
+
+/* Streaming wants a model that finishes a phrase in well under a second; the large
+   model is accurate but turns every pause into a visible wait. */
+function fastWhisperFor(chosen) {
+  const small = LOCAL_WHISPER[1][0];
+  return chosen === LOCAL_WHISPER[0][0] ? chosen : small;
 }
 
 /* Record, then hand the clip to a transcriber. Each one resolves with { text, language }; language is shown next to the mic when known. */
@@ -491,6 +596,7 @@ for (const [v, label] of VOICE_LANGS) { const o = document.createElement("option
    language is unreliable, so make correcting it a one-click job. */
 for (const [v, label] of VOICE_LANGS) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#speak-lang").appendChild(o); }
 $("#speak-lang").value = defaultVoiceLang(settings.voicelang, navigator.language);
+$("#speak-lang").hidden = settings.engine !== "browser";
 $("#speak-lang").onchange = () => {
   settings.voicelang = $("#speak-lang").value; saveSettings();
   if ($("#voicelang")) $("#voicelang").value = settings.voicelang;
@@ -520,8 +626,10 @@ function syncSettingsForm() {
     $("#ollama-installed").innerHTML = names.map((n) => `<option value="${n}">`).join("");
     $("#gpu-note").textContent = names.length ? `Ollama reachable — installed: ${names.slice(0, 6).join(", ")}${names.length > 6 ? "…" : ""}` : "Ollama not reachable yet — check the URL and OLLAMA_ORIGINS (see README).";
   });
-  $("#localwhisper-row").hidden = e !== "local"; $("#sttkey-row").hidden = e !== "whisper"; $("#desktopurl-row").hidden = e !== "desktop";
+  $("#localwhisper-row").hidden = !(e === "local" || e === "auto"); $("#sttkey-row").hidden = e !== "whisper"; $("#desktopurl-row").hidden = e !== "desktop";
   $("#voicelang-row").hidden = e !== "browser";
+  /* Auto mode detects the language per phrase, so the picker beside the mic is meaningless there. */
+  $("#speak-lang").hidden = e !== "browser";
   $("#model").placeholder = p === "openai" ? "gpt-4o-mini" : "claude-sonnet-5";
   if (p === "local") $("#gpu-note").textContent = hasWebGPU()
     ? "WebGPU available. Only models this browser can actually run are listed — press Test this model to confirm yours works."

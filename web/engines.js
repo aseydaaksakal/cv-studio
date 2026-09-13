@@ -285,6 +285,27 @@ export async function localTranscribe(model, blob, onProgress) {
   return run;
 }
 
+/**
+ * Transcribe one already-decoded 16 kHz mono segment. This is the streaming entry
+ * point: the caller cuts speech into phrases at silence, so each segment carries
+ * its own language and a speaker can switch languages between phrases.
+ * Shares the queue with localTranscribe — segments must never overlap on the session.
+ */
+export async function localTranscribeChunk(model, pcm, onProgress) {
+  const run = transcribeChain.then(() => transcribeChunkInner(model, pcm, onProgress));
+  transcribeChain = run.catch(() => {});
+  return run;
+}
+
+async function transcribeChunkInner(model, pcm, onProgress) {
+  const t = await localTranscriber(model, onProgress);
+  let language = null;
+  try { language = await detectLanguage(t, pcm); } catch { language = null; }
+  const out = await t(pcm, { task: "transcribe", ...(language ? { language } : {}), return_timestamps: false });
+  const text = (Array.isArray(out) ? out.map((o) => o.text).join(" ") : out.text || "").trim();
+  return { text, language };
+}
+
 async function localTranscribeInner(model, blob, onProgress) {
   const t = await localTranscriber(model, onProgress);
   const pcm = await blobToPCM(blob);
