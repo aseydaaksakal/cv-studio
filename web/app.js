@@ -1,5 +1,5 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
-import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, VOICE_LANGS, applyField, applyOps, applyTheme, clearSelectedSessions, copySession, createSession, defaultVoiceLang, deleteSession, deleteSessionsBatch, download, extractJSON, exportSessionsAsJSON, getActiveSession, getEffectiveTheme, getSelectedSessions, getSession, getSystemTheme, getTheme, looksDestructive, listSessions, normalize, plainText, renameSessionsBatch, renderATS, renderStyled, setActiveSession, setSelectedSessions, setSessionNotes, setTheme, updateSession, whisperLangName } from "./core.js";
+import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, VOICE_LANGS, applyField, applyOps, applyTheme, clearSelectedSessions, copySession, createDictationBuffer, createSession, defaultVoiceLang, deleteSession, deleteSessionsBatch, download, extractJSON, exportSessionsAsJSON, getActiveSession, getEffectiveTheme, getSelectedSessions, getSession, getSystemTheme, getTheme, looksDestructive, listSessions, normalize, plainText, renameSessionsBatch, renderATS, renderStyled, setActiveSession, setSelectedSessions, setSessionNotes, setTheme, updateSession, whisperLangName } from "./core.js";
 import { LOCAL_MODELS, LOCAL_WHISPER, UnknownModelError, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localTranscribeChunk, localWhisperId, ollamaModels, pickForBudget, probeModel, webgpuUsable } from "./engines.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
@@ -244,19 +244,8 @@ function startBrowser() {
   const lang = defaultVoiceLang(settings.voicelang, navigator.language);
   const langLabel = (VOICE_LANGS.find(([c]) => c === lang) || [, lang])[1];
   /* Whatever the user already typed stays put; speech is appended to it. */
-  let baseText = $("#ask").value.trim();
-  let finalText = "";
-  /* Last value this recogniser wrote. If the box no longer matches it the user
-     edited or cleared it mid-dictation, so the accumulated transcript has to be
-     abandoned — otherwise the next result resurrects the text they just deleted. */
-  let lastWritten = $("#ask").value;
+  const buffer = createDictationBuffer($("#ask").value);
   recogStopping = false;
-
-  const writeBox = (spoken) => {
-    if ($("#ask").value !== lastWritten) { baseText = $("#ask").value.trim(); finalText = spoken; }
-    lastWritten = [baseText, spoken].filter(Boolean).join(" ");
-    $("#ask").value = lastWritten;
-  };
 
   recognizer = new Recognition();
   recognizer.lang = lang;
@@ -265,15 +254,19 @@ function startBrowser() {
 
   recognizer.onstart = () => { setLive(true); micStatus(`Listening (${langLabel})… click again to stop.`); };
   recognizer.onresult = (e) => {
+    /* Reconcile with the box BEFORE folding in this event: if the user cleared it,
+       everything said earlier must be dropped, and only what arrives from here on
+       counts. Checking afterwards would fold the old transcript back in. */
+    buffer.syncFromBox($("#ask").value);
     /* Results before resultIndex are already settled — only read the new ones,
        so finals accumulate instead of being re-added on every event. */
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const r = e.results[i];
-      if (r.isFinal) finalText += r[0].transcript;
+      if (r.isFinal) buffer.addFinal(r[0].transcript);
       else interim += r[0].transcript;
     }
-    writeBox((finalText + interim).replace(/\s+/g, " ").trim());
+    $("#ask").value = buffer.compose(interim);
   };
   recognizer.onerror = (e) => {
     /* no-speech and aborted fire during normal pauses; onend restarts us. */
@@ -345,11 +338,8 @@ async function startAutoLingual() {
   const hangoverSamples = (VAD.hangoverMs / 1000) * VAD.rate;
   const minSpeechSamples = (VAD.minSpeechMs / 1000) * VAD.rate;
   const maxSegmentSamples = (VAD.maxSegmentMs / 1000) * VAD.rate;
-  let baseText = $("#ask").value.trim();
-  let settled = "";
-  /* See writeBox in startBrowser: if the user clears the box between phrases the
-     accumulated transcript must be dropped rather than re-written over their edit. */
-  let lastWritten = $("#ask").value;
+  const buffer = createDictationBuffer($("#ask").value);
+  let spokeAnything = false;
 
   const flush = () => {
     if (segmentSamples < minSpeechSamples) { segment = []; segmentSamples = 0; return; }
@@ -362,12 +352,13 @@ async function startAutoLingual() {
   const transcribeSegment = async (pcm) => {
     autoPending++;
     try {
-      const { text, language } = await localTranscribeChunk(model, pcm, (msg) => { if (!settled && !autoStopping) micStatus(msg); });
+      const { text, language } = await localTranscribeChunk(model, pcm, (msg) => { if (!spokeAnything && !autoStopping) micStatus(msg); });
       if (text) {
-        if ($("#ask").value !== lastWritten) { baseText = $("#ask").value.trim(); settled = ""; }
-        settled = (settled ? settled + " " : "") + text;
-        lastWritten = [baseText, settled].filter(Boolean).join(" ");
-        $("#ask").value = lastWritten;
+        spokeAnything = true;
+        buffer.syncFromBox($("#ask").value);
+        /* compose() collapses whitespace runs, so a leading space is a safe separator. */
+        buffer.addFinal(" " + text);
+        $("#ask").value = buffer.compose();
       }
       if (!autoStopping) micStatus(`Listening… ${language ? whisperLangName(language) + " detected · " : ""}click again to stop.`);
     } catch (e) {

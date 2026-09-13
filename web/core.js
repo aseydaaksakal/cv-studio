@@ -57,6 +57,44 @@ export function toMono(channels) {
   return out;
 }
 
+/**
+ * Tracks the compose box while dictation is running.
+ *
+ * The box belongs to the user, not to the recogniser: they can clear it or edit
+ * it mid-sentence. Anything spoken before that edit has to be forgotten, or the
+ * next result rewrites the text they just deleted. Kept pure and DOM-free so the
+ * rule is unit-tested rather than only observable by speaking at a browser.
+ *
+ * @param {string} initialBoxValue whatever was already in the box
+ */
+export function createDictationBuffer(initialBoxValue = "") {
+  let baseText = String(initialBoxValue ?? "").trim();
+  let finals = "";
+  let lastWritten = String(initialBoxValue ?? "");
+
+  return {
+    /**
+     * Reconcile with the box before folding in new speech.
+     * @returns {boolean} true when the user had changed it and history was dropped
+     */
+    syncFromBox(boxValue) {
+      const v = String(boxValue ?? "");
+      if (v === lastWritten) return false;
+      baseText = v.trim();
+      finals = "";
+      return true;
+    },
+    /** Add a settled phrase. Interim text is passed to compose instead. */
+    addFinal(text) { finals += String(text ?? ""); },
+    /** The value the box should now hold, including any interim tail. */
+    compose(interim = "") {
+      const spoken = (finals + String(interim ?? "")).replace(/\s+/g, " ").trim();
+      lastWritten = [baseText, spoken].filter(Boolean).join(" ");
+      return lastWritten;
+    },
+  };
+}
+
 /** Peak level of a clip; used to tell the user when the microphone delivered silence. */
 export function peakLevel(samples) { let p = 0; for (let i = 0; i < samples.length; i++) { const a = Math.abs(samples[i]); if (a > p) p = a; } return p; }
 
