@@ -212,3 +212,7 @@ select.mini { width:auto; margin:0; padding:.35rem .5rem; font-size:.8rem; max-w
   border: 1px solid var(--line); background: var(--card); }
 .mic-big.live { background: #d33; border-color: #d33; color: #fff; }
 .tag { font-weight: normal; opacity: .8; }
+.mic-opt { display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
+.mic-opt input { width: auto; margin: 0; }
+.mic-opt select { padding: .1rem .25rem; font-size: .85em; }
+.mic-opt select:disabled { opacity: .5; }

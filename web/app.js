@@ -1,5 +1,5 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
-import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, applyField, applyOps, applyTheme, clearSelectedSessions, copySession, createDictationBuffer, createSession, deleteSession, deleteSessionsBatch, download, extractJSON, exportSessionsAsJSON, getActiveSession, getEffectiveTheme, getSelectedSessions, getSession, getSystemTheme, getTheme, looksDestructive, listSessions, normalize, plainText, renameSessionsBatch, renderATS, renderStyled, setActiveSession, setSelectedSessions, setSessionNotes, setTheme, updateSession, whisperLangName } from "./core.js";
+import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, TRANSLATE_TARGETS, applyField, applyOps, applyTheme, clearSelectedSessions, copySession, createDictationBuffer, createSession, deleteSession, deleteSessionsBatch, download, extractJSON, exportSessionsAsJSON, getActiveSession, getEffectiveTheme, getSelectedSessions, getSession, getSystemTheme, getTheme, looksDestructive, listSessions, normalize, plainText, renameSessionsBatch, renderATS, renderStyled, setActiveSession, translationPrompt, setSelectedSessions, setSessionNotes, setTheme, updateSession, whisperLangName } from "./core.js";
 import { startPhraseListener } from "./listen.js";
 import { LOCAL_MODELS, LOCAL_WHISPER, UnknownModelError, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localWhisperId, ollamaModels, pickForBudget, probeModel, webgpuUsable } from "./engines.js";
 
@@ -256,6 +256,26 @@ function stopAutoLingual() {
   setLive(false);
 }
 
+/* Dictate in one language, have it typed in another — say a bullet in Turkish and
+ * get English into an English CV. The phrase is already transcribed and its
+ * language detected by the time this runs, so translation is one call to whichever
+ * text model is configured; no extra model is downloaded for it.
+ * If it fails, the original words are kept rather than losing what was said. */
+async function maybeTranslate(text, language) {
+  const to = $("#translate-to")?.value;
+  if (!$("#translate-on")?.checked || !to || language === to) return text;
+  try {
+    const { system, user } = translationPrompt(text, language, to);
+    micStatus(`Translating to ${whisperLangName(to)}…`);
+    const out = (await callModel(system, user) || "").trim();
+    return out || text;
+  } catch (e) {
+    console.error("Phrase translation failed:", e);
+    micStatus(`Could not translate — kept the original. ${e.message || ""}`.trim());
+    return text;
+  }
+}
+
 async function startAutoLingual() {
   const buffer = createDictationBuffer($("#ask").value);
   const settle = () => {
@@ -267,10 +287,11 @@ async function startAutoLingual() {
     onStatus: micStatus,
     onSettled: settle,
     onError: (e) => micStatus(e.message || "Could not transcribe that phrase — still listening."),
-    onPhrase: ({ text, language }) => {
+    onPhrase: async ({ text, language }) => {
+      const spoken = await maybeTranslate(text, language);
       buffer.syncFromBox($("#ask").value);
       /* compose() collapses whitespace runs, so a leading space is a safe separator. */
-      buffer.addFinal(" " + text);
+      buffer.addFinal(" " + spoken);
       $("#ask").value = buffer.compose();
       micStatus(`Listening… ${language ? whisperLangName(language) + " detected · " : ""}click again to stop.`);
     },
@@ -485,6 +506,22 @@ async function loadRealModelList() {
   syncSettingsForm();
 }
 for (const [v, label] of LOCAL_WHISPER) { const o = document.createElement("option"); o.value = v; o.textContent = label; $("#localwhisper").appendChild(o); }
+
+/* Dictate-and-translate, beside the mic. Off by default: most people type edits in
+   the language their CV is already in. Whisper detects the spoken language, so only
+   the destination is ever chosen here. */
+for (const [code, label] of TRANSLATE_TARGETS) {
+  const o = document.createElement("option"); o.value = code; o.textContent = label;
+  $("#translate-to").appendChild(o);
+}
+$("#translate-to").value = settings.translateto || "en";
+$("#translate-on").checked = Boolean(settings.translateon);
+$("#translate-to").disabled = !$("#translate-on").checked;
+$("#translate-on").onchange = () => {
+  $("#translate-to").disabled = !$("#translate-on").checked;
+  settings.translateon = $("#translate-on").checked; saveSettings();
+};
+$("#translate-to").onchange = () => { settings.translateto = $("#translate-to").value; saveSettings(); };
 /* Show a warning when large-v3-turbo is selected but GPU is unavailable */
 webgpuUsable().then((gpu) => {
   const whisperSel = $("#localwhisper");

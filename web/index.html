@@ -50,7 +50,6 @@
       <button id="btn-json" class="ghost small">Save JSON</button>
       <button id="btn-txt" class="ghost small">Plain text</button>
       <button id="btn-new" class="ghost small">New CV</button>
-      <a href="translate.html" class="ghost small" title="Speak in any language, read it back in another">Live Translate</a>
       <button id="btn-shortcuts" class="icon" title="Keyboard shortcuts">⌨️</button>
       <button id="btn-theme" class="icon" title="Toggle dark mode">🌙</button>
       <button id="btn-settings" class="icon" title="Settings">⚙</button>
@@ -63,6 +62,11 @@
         <button type="submit" id="btn-ask" class="icon in-box send" title="Apply (Enter)">↵</button>
       </div>
       <div class="composer-row">
+        <label class="mic-opt small" title="Speak in any language and have it typed in this one">
+          <input type="checkbox" id="translate-on">
+          Translate to
+          <select id="translate-to" disabled></select>
+        </label>
         <span id="mic-status" class="muted small"></span>
         <span class="spacer"></span>
         <span id="status" class="status small"></span>

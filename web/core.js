@@ -122,6 +122,77 @@ export function createDictationBuffer(initialBoxValue = "") {
   };
 }
 
+/* ── filtering what Whisper invents ───────────────────────────────────────────
+ * Whisper was trained on subtitles, so when it is handed music, breathing or room
+ * noise it does not return nothing — it returns what a subtitle file would have
+ * said. Three shapes show up constantly and none of them is speech:
+ *   1. bracketed sound events:  "(upbeat music)", "[Applause]", "♪♪♪"
+ *   2. repetition loops:        "Je vais vous dire que je vais vous dire que …"
+ *   3. stock subtitle credits:  "Thanks for watching!", "Altyazı M.K."
+ * All three reached the box during testing, so each is filtered here.
+ */
+
+/* Whole-output phrases Whisper emits over silence, lower-cased and unpunctuated. */
+const SUBTITLE_GHOSTS = new Set([
+  "thank you", "thanks for watching", "thank you for watching", "thanks for watching!",
+  "you", "bye", "bye bye", "okay", "so", "the end", "subscribe",
+  "altyazı m k", "altyazı mk", "altyazi m k", "abonelikleriniz için teşekkürler",
+  "amara org", "subtitles by the amara org community", "subtitles by the amara.org community",
+  "sous-titrage société radio-canada", "sous-titres réalisés par la communauté d'amara org",
+  "untertitel im auftrag des zdf", "untertitelung aufgrund der amara org",
+]);
+
+/**
+ * Collapse a block of words repeated back to back.
+ * A single word needs three repeats before it is treated as a loop, so genuine
+ * emphasis ("çok çok iyi", "very very good") survives; longer blocks only need two.
+ */
+function collapseRepeats(text) {
+  let words = text.split(/\s+/).filter(Boolean);
+  for (let n = Math.min(10, Math.floor(words.length / 2)); n >= 1; n--) {
+    const out = [];
+    let i = 0;
+    while (i < words.length) {
+      const block = words.slice(i, i + n).join(" ").toLowerCase();
+      let reps = 1;
+      while (block && words.slice(i + reps * n, i + (reps + 1) * n).join(" ").toLowerCase() === block) reps++;
+      out.push(...words.slice(i, i + n));
+      i += (reps >= (n === 1 ? 3 : 2)) ? reps * n : n;
+    }
+    words = out;
+  }
+  return words.join(" ");
+}
+
+/**
+ * Turn one raw Whisper phrase into something worth showing, or "" to drop it.
+ * @param {string} raw
+ * @returns {string} cleaned speech, or "" when the clip held no speech
+ */
+export function cleanTranscript(raw) {
+  let t = String(raw ?? "").trim();
+  if (!t) return "";
+
+  /* Sound events, in the several bracket styles Whisper uses. Only short spans:
+     a long parenthetical is far more likely to be something the person said. */
+  t = t.replace(/[([{（【][^)\]}）】]{0,40}[)\]}）】]/g, " ");
+  t = t.replace(/[♪♫🎵🎶]+/g, " ");
+  t = t.replace(/\s+/g, " ").trim();
+  if (!t) return "";
+
+  t = collapseRepeats(t);
+
+  /* Whatever is left may still be a stock subtitle credit rather than speech. */
+  /* Dots become spaces rather than vanishing, so "M.K." and "Amara.org" match the
+     spaced spellings in the list instead of collapsing into "mk" and "amaraorg". */
+  const bare = t.toLowerCase().replace(/[.]/g, " ").replace(/[!?,…"'’]/g, "").replace(/\s+/g, " ").trim();
+  if (SUBTITLE_GHOSTS.has(bare)) return "";
+  /* A lone punctuation mark or single letter is noise, not a word. */
+  if (!/[\p{L}\p{N}]{2,}/u.test(t)) return "";
+
+  return t;
+}
+
 /** Peak level of a clip; used to tell the user when the microphone delivered silence. */
 export function peakLevel(samples) { let p = 0; for (let i = 0; i < samples.length; i++) { const a = Math.abs(samples[i]); if (a > p) p = a; } return p; }
 

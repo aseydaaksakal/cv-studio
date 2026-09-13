@@ -1,18 +1,18 @@
 /**
- * Live Translate: the pure pieces.
+ * The dictate-and-translate prompt.
  *
  * The audio path needs a microphone and the translation itself needs a model, so
- * what is testable here is the contract between them — the target list lining up
+ * what is testable here is the contract between them: the target list lining up
  * with the codes Whisper reports, and a prompt that makes a chat model translate
- * rather than reply.
+ * rather than reply to what it was handed.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { TRANSLATE_TARGETS, translationPrompt, whisperLangName } from "../core.js";
 
 test("target codes are the same two-letter codes Whisper reports", () => {
-  /* The app compares a detected language against a chosen target directly, so any
-     mismatch in shape would silently translate text into the language it is in. */
+  /* The app compares the detected language against the chosen target directly, so
+     a mismatch in shape would silently translate text into the language it is in. */
   for (const [code] of TRANSLATE_TARGETS) {
     assert.match(code, /^[a-z]{2}$/, `${code} is not a Whisper language code`);
     assert.notEqual(whisperLangName(code), code, `${code} has no display name`);
@@ -47,7 +47,7 @@ test("an undetected source language is described rather than left blank", () => 
 });
 
 test("the prompt forbids the model from answering instead of translating", () => {
-  /* A chat model asked "how are you" will reply "I'm well" unless told not to. */
+  /* A chat model handed "nasılsın" will reply "iyiyim" unless told not to. */
   const { system, user } = translationPrompt("nasılsın", "tr", "en");
   assert.match(system, /only translate/i);
   assert.match(system, /never answer/i);

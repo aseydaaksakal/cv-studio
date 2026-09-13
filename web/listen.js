@@ -9,6 +9,7 @@
  * unavoidable price of not being told the language up front.
  */
 
+import { cleanTranscript } from "./core.js";
 import { LOCAL_WHISPER, localTranscribeChunk } from "./engines.js";
 
 export const VAD = {
@@ -59,7 +60,10 @@ export async function startPhraseListener({ model, onPhrase, onStatus = () => {}
     pending++;
     try {
       const { text, language } = await localTranscribeChunk(whisper, pcm, (msg) => { if (!gotSpeech && !stopping) onStatus(msg); });
-      if (text) { gotSpeech = true; onPhrase({ text, language }); }
+      /* Whisper answers noise with subtitle-shaped inventions rather than silence,
+         so a phrase only counts once it survives that filter. */
+      const speech = cleanTranscript(text);
+      if (speech) { gotSpeech = true; onPhrase({ text: speech, language }); }
     } catch (e) {
       console.error("Segment transcription failed:", e);
       onError(e);
