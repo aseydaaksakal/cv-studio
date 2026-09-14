@@ -211,11 +211,13 @@
     <label id="desktopurl-row" hidden>Desktop backend URL <input type="text" id="desktopurl" placeholder="http://localhost:8000"></label>
     <label>Voice engine
       <select id="engine">
+        <option value="cloud">Voice server — large Whisper, no download, any language (recommended)</option>
         <option value="auto">In this browser — detects the language itself, no key (live demo)</option>
         <option value="desktop">On my own machine — CV Studio desktop backend, faster-whisper</option>
         <option value="whisper">Whisper API (OpenAI) — your key</option>
       </select>
     </label>
+    <label id="cloudurl-row" hidden>Voice server URL <input type="text" id="cloudurl" placeholder="https://cv-studio-voice.<you>.workers.dev"></label>
     <label id="localwhisper-row">Local Whisper size <select id="localwhisper"></select></label>
     <label id="sttkey-row" hidden>OpenAI key for Whisper API <input type="password" id="sttkey" autocomplete="off"></label>
     <p class="muted small" id="gpu-note"></p>

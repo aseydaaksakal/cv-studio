@@ -1,5 +1,5 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
-import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, TRANSLATE_TARGETS, applyField, applyOps, applyTheme, clearSelectedSessions, copySession, createDictationBuffer, createSession, deleteSession, deleteSessionsBatch, download, extractJSON, exportSessionsAsJSON, getActiveSession, getEffectiveTheme, getSelectedSessions, getSession, getSystemTheme, getTheme, looksDestructive, listSessions, normalize, plainText, renameSessionsBatch, renderATS, renderStyled, setActiveSession, translationPrompt, setSelectedSessions, setSessionNotes, setTheme, updateSession, whisperLangName } from "./core.js";
+import { EMPTY, SAMPLE, SYSTEM_EDIT, SYSTEM_PARSE, TRANSLATE_TARGETS, applyField, cleanTranscript, applyOps, applyTheme, clearSelectedSessions, copySession, createDictationBuffer, createSession, deleteSession, deleteSessionsBatch, download, extractJSON, exportSessionsAsJSON, getActiveSession, getEffectiveTheme, getSelectedSessions, getSession, getSystemTheme, getTheme, looksDestructive, listSessions, normalize, plainText, renameSessionsBatch, renderATS, renderStyled, setActiveSession, translationPrompt, setSelectedSessions, setSessionNotes, setTheme, updateSession, whisperLangName } from "./core.js";
 import { startPhraseListener } from "./listen.js";
 import { LOCAL_MODELS, LOCAL_WHISPER, UnknownModelError, availableLocalModels, hasWebGPU, localComplete, localTranscribe, localWhisperId, ollamaModels, pickForBudget, probeModel, webgpuUsable } from "./engines.js";
 
@@ -232,7 +232,7 @@ const setLive = (on) => { listening = on; $("#btn-mic").classList.toggle("live",
 function toggleMic() {
   if (listening) { stopAutoLingual(); if (recorder && recorder.state === "recording") recorder.stop(); return; }
   if (settings.engine === "auto") return startAutoLingual();
-  const engines = { whisper: transcribeWithAPI, desktop: transcribeWithDesktop };
+  const engines = { cloud: transcribeWithCloud, whisper: transcribeWithAPI, desktop: transcribeWithDesktop };
   const chosen = engines[settings.engine];
   if (!chosen) return startAutoLingual();
   const withFallback = async (blob) => {
@@ -339,6 +339,19 @@ async function transcribeLocally(blob) {
     console.error("Transcription error:", e);
     throw e;
   }
+}
+
+/* The chat-app model: upload the recording, a large Whisper runs on a server, text
+   comes back. No model in the browser, so no download and no loading screen. */
+async function transcribeWithCloud(blob) {
+  const url = (settings.cloudurl || "").trim();
+  if (!url) throw new Error("Set the voice server URL in ⚙ settings first.");
+  let r;
+  try { r = await fetch(url, { method: "POST", headers: { "Content-Type": blob.type || "audio/webm" }, body: blob }); }
+  catch { throw new Error(`Cannot reach the voice server at ${url}.`); }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`Voice server: ${d.error || r.status}`);
+  return { text: cleanTranscript(d.text || ""), language: d.language || null };
 }
 
 async function transcribeWithDesktop(blob) {
@@ -546,7 +559,7 @@ function syncSettingsForm() {
     $("#ollama-installed").innerHTML = names.map((n) => `<option value="${n}">`).join("");
     $("#gpu-note").textContent = names.length ? `Ollama reachable — installed: ${names.slice(0, 6).join(", ")}${names.length > 6 ? "…" : ""}` : "Ollama not reachable yet — check the URL and OLLAMA_ORIGINS (see README).";
   });
-  $("#localwhisper-row").hidden = e !== "auto"; $("#sttkey-row").hidden = e !== "whisper"; $("#desktopurl-row").hidden = e !== "desktop";
+  $("#localwhisper-row").hidden = e !== "auto"; $("#cloudurl-row").hidden = e !== "cloud"; $("#sttkey-row").hidden = e !== "whisper"; $("#desktopurl-row").hidden = e !== "desktop";
   $("#model").placeholder = p === "openai" ? "gpt-4o-mini" : "claude-sonnet-5";
   if (p === "local") $("#gpu-note").textContent = hasWebGPU()
     ? "WebGPU available. Only models this browser can actually run are listed — press Test this model to confirm yours works."
@@ -555,7 +568,7 @@ function syncSettingsForm() {
 }
 const openSettings = () => {
   $("#provider").value = settings.provider; $("#localmodel").value = settings.localmodel; $("#custommodel").value = settings.custommodel || ""; $("#apikey").value = settings.apikey || ""; $("#model").value = settings.model || ""; $("#baseurl").value = settings.baseurl || "";
-  $("#engine").value = settings.engine; $("#localwhisper").value = settings.localwhisper; $("#sttkey").value = settings.sttkey || "";
+  $("#engine").value = settings.engine; $("#cloudurl").value = settings.cloudurl || ""; $("#localwhisper").value = settings.localwhisper; $("#sttkey").value = settings.sttkey || "";
   $("#ollamaurl").value = settings.ollamaurl; $("#ollamamodel").value = settings.ollamamodel; $("#desktopurl").value = settings.desktopurl;
   syncSettingsForm(); dlg.showModal(); loadRealModelList();
 };
@@ -578,7 +591,7 @@ $("#btn-test-model").onclick = async () => {
   finally { Object.assign(settings, saved); btn.disabled = false; }
 };
 $("#btn-save-settings").onclick = () => {
-  Object.assign(settings, { provider: $("#provider").value, localmodel: $("#localmodel").value, custommodel: $("#custommodel").value.trim(), apikey: $("#apikey").value.trim(), model: $("#model").value.trim(), baseurl: $("#baseurl").value.trim(), engine: $("#engine").value, localwhisper: $("#localwhisper").value, sttkey: $("#sttkey").value.trim(), enginev3: true, ollamaurl: $("#ollamaurl").value.trim() || "http://localhost:11434", ollamamodel: $("#ollamamodel").value.trim() || "qwen3.8:27b", desktopurl: $("#desktopurl").value.trim() || "http://localhost:8000" });
+  Object.assign(settings, { provider: $("#provider").value, localmodel: $("#localmodel").value, custommodel: $("#custommodel").value.trim(), apikey: $("#apikey").value.trim(), model: $("#model").value.trim(), baseurl: $("#baseurl").value.trim(), engine: $("#engine").value, localwhisper: $("#localwhisper").value, sttkey: $("#sttkey").value.trim(), cloudurl: $("#cloudurl").value.trim(), enginev3: true, ollamaurl: $("#ollamaurl").value.trim() || "http://localhost:11434", ollamamodel: $("#ollamamodel").value.trim() || "qwen3.8:27b", desktopurl: $("#desktopurl").value.trim() || "http://localhost:8000" });
   saveSettings();
 };
 
